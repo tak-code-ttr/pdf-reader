@@ -2,7 +2,7 @@
 """src/pdf-reader.src.html に PDF.js 一式を埋め込み、オフラインで動く単一ファイルを生成する。
 
   pdf-reader.html … ローカル用（ダブルクリックで開く・iCloud Drive などに置く）
-  site/           … Web公開用（GitHub Pages など）。PWA 対応でホーム画面に追加してオフライン起動できる
+  docs/           … Web公開用（GitHub Pages の公開フォルダ）。PWA 対応でホーム画面に追加してオフライン起動できる
 
 使い方: python3 build.py
 """
@@ -15,9 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src" / "pdf-reader.src.html"
 OUT = ROOT / "pdf-reader.html"
-SITE = ROOT / "site"
+SITE = ROOT / "docs"
 PWA = ROOT / "pwa"
 PDFJS = ROOT / "vendor" / "pdfjs-dist-3.11.174"
+PWA_FILES = ("manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png")
 PWA_HEAD = (
     '<link rel="manifest" href="manifest.webmanifest">\n'
     '<link rel="icon" href="icon-192.png">\n'
@@ -70,15 +71,15 @@ def main():
     SITE.mkdir()
     site_html = replace_marker(html, "PWA_HEAD", PWA_HEAD)
     (SITE / "index.html").write_text(site_html, encoding="utf-8")
-    for name in ("manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"):
+    for name in PWA_FILES:
         shutil.copy2(PWA / name, SITE / name)
     version = hashlib.sha256(
-        site_html.encode("utf-8") + b"".join((PWA / n).read_bytes() for n in sorted(p.name for p in PWA.iterdir()))
+        site_html.encode("utf-8") + b"".join((PWA / n).read_bytes() for n in (*PWA_FILES, "sw.js"))
     ).hexdigest()[:12]
     (SITE / "sw.js").write_text((PWA / "sw.js").read_text(encoding="utf-8").replace("@@VERSION@@", version),
                                 encoding="utf-8")
     (SITE / ".nojekyll").write_text("")
-    print(f"site/: index.html ほか（キャッシュ版 {version}）")
+    print(f"docs/: index.html ほか（キャッシュ版 {version}）")
 
 
 if __name__ == "__main__":
