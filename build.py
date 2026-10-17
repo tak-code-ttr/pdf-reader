@@ -9,6 +9,7 @@
 import base64
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -36,6 +37,15 @@ def script_safe(text, label):
     return text
 
 
+def add_script_hashes(html):
+    """CSP の 'unsafe-inline' の代わりに、埋め込んだ各スクリプトのハッシュだけを実行許可する。
+    ワーカー本体（type="text/plain"）も、Worker が使えない環境で <script> として実行するため含める。"""
+    bodies = re.findall(r"<script(?: [^>]*)?>(.*?)</script>", html, re.S)
+    hashes = sorted({"'sha256-" + base64.b64encode(hashlib.sha256(b.encode("utf-8")).digest()).decode() + "'"
+                     for b in bodies if b.strip()})
+    return html.replace("@@SCRIPT_HASHES@@", " ".join(hashes), 1)
+
+
 def replace_marker(html, name, content):
     start = html.index(f"<!--@@{name}@@")
     end = html.index("-->", start) + len("-->")
@@ -58,7 +68,7 @@ def main():
         f'<script id="pdfjs-worker" type="text/plain">{worker}</script>\n'
         f'<script id="pdfjs-assets" type="application/json">{json.dumps(assets, separators=(",", ":"))}</script>'
     )
-    html = replace_marker(src, "PDFJS_EMBED", embed)
+    html = add_script_hashes(replace_marker(src, "PDFJS_EMBED", embed))
 
     # ローカル用
     OUT.write_text(replace_marker(html, "PWA_HEAD", ""), encoding="utf-8")

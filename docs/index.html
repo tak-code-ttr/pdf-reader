@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-3elvUFRLgdxq+7e+ffGX4fHeEAy4Vk7ibML1GXXgRI8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -453,10 +453,15 @@ const S = {
 };
 const PREF_KEY = 'pdfreader:prefs';
 (function loadPrefs() {
-  const p = lsGet(PREF_KEY, {});
-  for (const k of ['mode', 'dir', 'coverAlone', 'fit', 'penOnly', 'straight']) if (p[k] !== undefined) S[k] = p[k];
-  if (p.color) Object.assign(S.color, p.color);
-  if (p.size) Object.assign(S.size, p.size);
+  // 保存値は想定した選択肢のときだけ採用する（壊れた値・改ざんされた値で表示が崩れないように）
+  const p = lsGet(PREF_KEY, {}) || {};
+  const pick = (k, list) => { if (list.includes(p[k])) S[k] = p[k]; };
+  pick('mode', ['single', 'scroll', 'spread']); pick('dir', ['ltr', 'rtl']); pick('fit', ['page', 'width']);
+  for (const k of ['coverAlone', 'penOnly', 'straight']) if (typeof p[k] === 'boolean') S[k] = p[k];
+  for (const [t, list] of [['marker', MARKER_COLORS], ['pen', PEN_COLORS]]) {
+    if (p.color && list.includes(p.color[t])) S.color[t] = p.color[t];
+    if (p.size && [0, 1, 2].includes(p.size[t])) S.size[t] = p.size[t];
+  }
 })();
 function savePrefs() {
   lsSet(PREF_KEY, { mode: S.mode, dir: S.dir, coverAlone: S.coverAlone, fit: S.fit, penOnly: S.penOnly, straight: S.straight, color: S.color, size: S.size });
@@ -1551,6 +1556,21 @@ $('#miImport').addEventListener('click', () => {
   if (!S.pdf) { toast('先に対象のPDFを開いてください'); return; }
   $('#importInput').click();
 });
+// 読み込む注釈ファイルは外部から来たデータとして扱い、必要な項目だけを型・範囲を確かめて取り込む
+const COLOR_RE = /^#[0-9a-f]{6}$/i, ID_RE = /^[a-z0-9]{1,40}$/i;
+const num = v => typeof v === 'number' && Number.isFinite(v);
+function cleanStroke(st) {
+  if (!st || typeof st !== 'object' || !Array.isArray(st.p) || st.p.length > 20000) return null;
+  const p = st.p.filter(q => Array.isArray(q) && num(q[0]) && num(q[1])).map(([x, y]) => [r1(x), r1(y)]);
+  if (!p.length || !COLOR_RE.test(st.c) || !num(st.w) || st.w <= 0 || st.w > 100) return null;
+  return { id: ID_RE.test(st.id) ? st.id : uid(), t: st.t === 'marker' ? 'marker' : 'pen', c: st.c, w: st.w, s: !!st.s, p };
+}
+function cleanNote(nt) {
+  if (!nt || typeof nt !== 'object' || typeof nt.text !== 'string' || !num(nt.x) || !num(nt.y) || !COLOR_RE.test(nt.c)) return null;
+  const o = { id: ID_RE.test(nt.id) ? nt.id : uid(), x: r1(nt.x), y: r1(nt.y), text: nt.text.slice(0, 20000), c: nt.c, t: num(nt.t) ? nt.t : Date.now() };
+  if (num(nt.u)) o.u = nt.u;
+  return o;
+}
 $('#importInput').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
@@ -1561,11 +1581,15 @@ $('#importInput').addEventListener('change', async e => {
     if (data.fingerprint && data.fingerprint !== S.key && !confirm('このファイルは別のPDFの注釈のようです。読み込みますか？')) return;
     let cnt = 0;
     for (const kind of ['strokes', 'notes']) {
+      const clean = kind === 'strokes' ? cleanStroke : cleanNote;
       for (const [n, list] of Object.entries(a[kind] || {})) {
-        if (!Array.isArray(list)) continue;
+        if (!/^\d+$/.test(n) || +n < 1 || +n > S.N || !Array.isArray(list)) continue;
         const cur = ann[kind][n] || (ann[kind][n] = []);
         const ids = new Set(cur.map(x => x.id));
-        for (const item of list) if (item && !ids.has(item.id)) { cur.push(item); cnt++; }
+        for (const raw of list) {
+          const item = clean(raw);
+          if (item && !ids.has(item.id)) { cur.push(item); ids.add(item.id); cnt++; }
+        }
         tidy(n);
       }
     }
