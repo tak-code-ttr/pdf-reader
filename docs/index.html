@@ -197,6 +197,14 @@ footer{
 .note-colors .swatch{width:24px;height:24px;border-radius:6px}
 .meta-time{font-size:12px;color:var(--muted);font-weight:400}
 
+/* ---------- 全画面表示（ツールバーを隠す） ---------- */
+body.bars-hidden header, body.bars-hidden footer{display:none}
+#fullExit{
+  position:fixed;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));z-index:25;
+  width:40px;height:40px;border-radius:50%;background:rgba(30,30,30,.55);color:#fff;opacity:.7;display:none;
+}
+body.bars-hidden #fullExit{display:inline-flex}
+
 #toast{
   position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);
   background:rgba(30,30,30,.92);color:#fff;padding:10px 16px;border-radius:10px;z-index:60;
@@ -223,6 +231,7 @@ footer{
   <div class="sep"></div>
   <button class="btn" id="btnView" title="表示設定"><span data-icon="book"></span><span class="lbl">表示</span></button>
   <button class="btn" id="btnSide" title="メモ一覧・目次"><span data-icon="list"></span></button>
+  <button class="btn" id="btnFull" title="全画面表示 (F)"><span data-icon="expand"></span></button>
   <button class="btn" id="btnMore" title="その他"><span data-icon="more"></span></button>
 </header>
 
@@ -329,6 +338,7 @@ footer{
   </div>
 </div>
 
+<button class="btn" id="fullExit" title="全画面表示を終了"><span data-icon="shrink"></span></button>
 <div id="toast"></div>
 
 <!-- PDF.js 3.11.174 (Apache-2.0, Mozilla Foundation) を埋め込み。build.py で生成 -->
@@ -418,7 +428,9 @@ const ICONS = {
   eraser: '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
   note: '<path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5Z"/><path d="M15 3v6h6"/>',
   undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>',
-  lines: '<path d="M6 8h12M6 12h12M6 16h8"/>'
+  lines: '<path d="M6 8h12M6 12h12M6 16h8"/>',
+  expand: '<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  shrink: '<path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/>'
 };
 const icon = (name, w = 2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
 $$('[data-icon]').forEach(el => { el.outerHTML = icon(el.dataset.icon); });
@@ -910,6 +922,32 @@ viewer.addEventListener('wheel', e => {
   } else wheelAcc = 0;
 }, { passive: false });
 
+/* ================= 全画面表示 ================= */
+// 対応ブラウザでは Fullscreen API、非対応（iPhone など）ではツールバーを隠すだけ
+const fsEl = document.documentElement;
+const canFS = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
+const fsActive = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+let full = false;
+function setFull(on) {
+  full = on;
+  document.body.classList.toggle('bars-hidden', on);
+  if (on && canFS && !fsActive()) {
+    const r = (fsEl.requestFullscreen || fsEl.webkitRequestFullscreen).call(fsEl);
+    if (r && r.catch) r.catch(() => {});
+  }
+  if (!on && fsActive()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  $('#btnFull').innerHTML = icon(on ? 'shrink' : 'expand');
+  $('#btnFull').title = on ? '全画面表示を終了 (F)' : '全画面表示 (F)';
+  $('#miFull').textContent = on ? '全画面表示を終了' : '全画面表示';
+  if (on) toast(isTouch ? '画面中央をタップするとツールバーを表示できます' : '画面中央のクリックでツールバー表示、F・Escで終了');
+}
+// Esc キーや OS の操作で全画面が解除されたら表示も元に戻す
+const onFsChange = () => { if (full && !fsActive()) setFull(false); };
+document.addEventListener('fullscreenchange', onFsChange);
+document.addEventListener('webkitfullscreenchange', onFsChange);
+$('#btnFull').addEventListener('click', () => { closePops(); setFull(!full); });
+$('#fullExit').addEventListener('click', () => setFull(false));
+
 /* ---- タッチ：ピンチズーム・スワイプでページ送り ---- */
 let pinch = null, swipe = null, lastTouchDraw = 0;
 document.addEventListener('gesturestart', e => e.preventDefault());
@@ -965,13 +1003,14 @@ viewer.addEventListener('touchcancel', () => { if (pinch) { pinch = null; pagesE
 
 /* ---- 画面端タップでページ送り（閲覧ツール時） ---- */
 viewer.addEventListener('click', e => {
-  if (!S.pdf || S.tool !== 'view' || S.mode === 'scroll') return;
+  if (!S.pdf || S.tool !== 'view') return;
   if (e.target.closest('.note')) return;
-  if (viewer.scrollWidth - viewer.clientWidth > 2) return;
   const rect = viewer.getBoundingClientRect();
   const x = (e.clientX - rect.left) / rect.width;
-  if (x < 0.18) stepSide('left');
-  else if (x > 0.82) stepSide('right');
+  const edge = S.mode !== 'scroll' && viewer.scrollWidth - viewer.clientWidth <= 2;
+  if (edge && x < 0.18) stepSide('left');
+  else if (edge && x > 0.82) stepSide('right');
+  else if (full) document.body.classList.toggle('bars-hidden'); // 全画面中は中央タップでツールバーの表示切替
 });
 
 /* ================= キーボード ================= */
@@ -1004,7 +1043,8 @@ document.addEventListener('keydown', e => {
     case 'p': case 'P': setTool('pen'); break;
     case 'e': case 'E': setTool('eraser'); break;
     case 'n': case 'N': setTool('memo'); break;
-    case 'Escape': closePops(); setTool('view'); break;
+    case 'f': case 'F': setFull(!full); break;
+    case 'Escape': closePops(); setTool('view'); if (full) setFull(false); break;
   }
 });
 
@@ -1541,18 +1581,7 @@ $('#miClear').addEventListener('click', () => {
   saveAnn(true); for (const el of pageEls.values()) drawAnn(el); renderSideList();
   toast('注釈をすべて削除しました');
 });
-const fsEl = document.documentElement;
-const canFS = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
-if (!canFS) $('#miFull').classList.add('hidden');
-$('#miFull').addEventListener('click', () => {
-  closePops();
-  const cur = document.fullscreenElement || document.webkitFullscreenElement;
-  if (cur) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-  else (fsEl.requestFullscreen || fsEl.webkitRequestFullscreen).call(fsEl);
-});
-document.addEventListener('fullscreenchange', () => {
-  $('#miFull').textContent = document.fullscreenElement ? '全画面表示を終了' : '全画面表示';
-});
+$('#miFull').addEventListener('click', () => { closePops(); setFull(!full); });
 
 /* ================= 初期化 ================= */
 // Web公開版（https）のみ Service Worker を登録してオフライン起動できるようにする
