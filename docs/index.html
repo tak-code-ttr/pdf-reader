@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-3elvUFRLgdxq+7e+ffGX4fHeEAy4Vk7ibML1GXXgRI8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' 'sha256-Zw9R+qNzWz65JdZoQUg1PYCp4ppkhTVxGNpxLy5uMCU=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -164,6 +164,36 @@ body.dragover #viewer{outline:3px dashed var(--accent);outline-offset:-10px}
 .menu .mi.danger{color:#e03131}
 .menu hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
 
+/* ---------- ページスライダー ---------- */
+#pageBar{
+  flex:none;position:relative;z-index:21;display:flex;align-items:center;
+  padding:2px max(14px,env(safe-area-inset-right)) 2px max(14px,env(safe-area-inset-left));
+  background:var(--bar);border-top:1px solid var(--line);
+}
+body.bars-hidden #pageBar{display:none}
+.pb-track{position:relative;flex:1;height:34px;display:flex;align-items:center}
+#pageSlider{-webkit-appearance:none;appearance:none;width:100%;height:34px;margin:0;background:transparent;cursor:pointer}
+#pageSlider:focus{outline:none}
+#pageSlider::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line)}
+#pageSlider::-moz-range-track{height:4px;border-radius:2px;background:var(--line)}
+#pageSlider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:20px;height:20px;margin-top:-8px;border-radius:50%;
+  background:var(--accent);border:2px solid var(--bar);box-shadow:0 1px 4px rgba(0,0,0,.35);
+}
+#pageSlider::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);border:2px solid var(--bar);box-shadow:0 1px 4px rgba(0,0,0,.35)}
+#pageSlider:focus-visible::-webkit-slider-thumb{outline:2px solid var(--accent);outline-offset:2px}
+.pb-marks{position:absolute;left:10px;right:10px;top:50%;height:0;pointer-events:none}
+.pb-marks i{position:absolute;top:5px;left:calc(var(--f) * 100%);width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#f08c00}
+#pageBar.rtl .pb-marks i{left:calc((1 - var(--f)) * 100%)}
+#pageBubble{
+  position:absolute;bottom:calc(100% + 6px);transform:translateX(-50%);pointer-events:none;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);
+  padding:6px;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:72px;
+}
+.pb-thumb{display:flex;align-items:center;justify-content:center;min-height:40px}
+.pb-thumb canvas{display:block;box-shadow:0 0 0 1px var(--line)}
+#pageBubbleLabel{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+
 /* ---------- ツールバー（下） ---------- */
 footer{
   flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 14px;
@@ -302,6 +332,14 @@ body.bars-hidden #fullExit{display:inline-flex}
   </div>
 
   <div id="loading" class="hidden"><div class="spinner"></div></div>
+</div>
+
+<div id="pageBar" class="hidden">
+  <div class="pb-track">
+    <input type="range" id="pageSlider" min="1" max="1" step="1" value="1" aria-label="ページ移動">
+    <div class="pb-marks" id="pageMarks"></div>
+  </div>
+  <div id="pageBubble" class="hidden"><div class="pb-thumb" id="pageThumb"></div><div id="pageBubbleLabel"></div></div>
 </div>
 
 <footer>
@@ -560,6 +598,7 @@ async function openData(data, name, size) {
   if (S.pdf) { teardownView(); try { S.pdf.destroy(); } catch (e) {} }
 
   S.pdf = pdf; S.N = pdf.numPages; S.name = name;
+  thumbCache.clear(); thumbWant = 0; $('#pageThumb').textContent = '';
   S.key = (pdf.fingerprints && pdf.fingerprints[0]) || (name + ':' + size);
   const p1 = await pdf.getPage(1);
   const vp = p1.getViewport({ scale: 1 });
@@ -834,6 +873,7 @@ function stepSide(side) { // 'left' | 'right'
 
 function updatePageUI() {
   const inp = $('#pageInput');
+  updateSlider();
   if (!S.pdf) { inp.value = ''; $('#pageTotal').textContent = '/ 0'; return; }
   if (document.activeElement !== inp) {
     if (S.mode === 'spread') { const g = groupPages(groupIndexOf(S.current)); inp.value = g.length > 1 ? g[0] + '-' + g[1] : String(g[0]); }
@@ -857,6 +897,85 @@ pageInput.addEventListener('blur', () => {
   if (!isNaN(v)) goTo(v);
   updatePageUI();
 });
+
+/* ================= ページスライダー ================= */
+// ドラッグ中は吹き出しにページ番号とサムネイルを表示し、指を離した時点でそのページへ移動する
+const pageBar = $('#pageBar'), slider = $('#pageSlider'), bubble = $('#pageBubble');
+let sliding = false;
+function updateSlider() {
+  pageBar.classList.toggle('hidden', !S.pdf || S.N < 2);
+  if (!S.pdf) return;
+  const rtl = forwardIsLeft();
+  slider.max = S.N;
+  slider.style.direction = rtl ? 'rtl' : 'ltr';
+  pageBar.classList.toggle('rtl', rtl);
+  if (!sliding) slider.value = S.current;
+}
+function updateMarks() {
+  const box = $('#pageMarks');
+  box.textContent = '';
+  if (!S.pdf || S.N < 2) return;
+  const pages = new Set([...Object.keys(ann.strokes), ...Object.keys(ann.notes)].map(Number));
+  for (const n of pages) {
+    if (!(n >= 1 && n <= S.N)) continue;
+    const i = document.createElement('i');
+    i.style.setProperty('--f', (n - 1) / (S.N - 1));
+    box.append(i);
+  }
+}
+function showBubble() {
+  const n = +slider.value;
+  const label = S.mode === 'spread' ? groupPages(groupIndexOf(n)).join('-') : n;
+  $('#pageBubbleLabel').textContent = `${label} / ${S.N}`;
+  bubble.classList.remove('hidden');
+  const r = slider.getBoundingClientRect(), br = pageBar.getBoundingClientRect();
+  let f = (n - 1) / Math.max(1, S.N - 1);
+  if (forwardIsLeft()) f = 1 - f;
+  const half = bubble.offsetWidth / 2 + 4;
+  bubble.style.left = clamp(r.left - br.left + 10 + f * (r.width - 20), half, br.width - half) + 'px';
+  requestThumb(n);
+}
+function hideBubble() { bubble.classList.add('hidden'); }
+
+const thumbCache = new Map();
+let thumbWant = 0, thumbBusy = false;
+function setThumb(cv) { const box = $('#pageThumb'); if (box.firstChild !== cv) box.replaceChildren(cv); }
+async function requestThumb(n) {
+  thumbWant = n;
+  if (thumbCache.has(n)) { setThumb(thumbCache.get(n)); return; }
+  if (thumbBusy) return;
+  thumbBusy = true;
+  const pdf = S.pdf;
+  try {
+    while (S.pdf === pdf && thumbWant && !thumbCache.has(thumbWant)) {
+      const k = thumbWant;
+      const page = await pdf.getPage(k);
+      const v1 = page.getViewport({ scale: 1 });
+      const css = Math.min(110 / v1.width, 140 / v1.height);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const vp = page.getViewport({ scale: css * dpr });
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.floor(vp.width)); cv.height = Math.max(1, Math.floor(vp.height));
+      cv.style.width = Math.floor(v1.width * css) + 'px'; cv.style.height = Math.floor(v1.height * css) + 'px';
+      const ctx = cv.getContext('2d', { alpha: false });
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      if (S.pdf !== pdf) return;
+      thumbCache.set(k, cv);
+      if (thumbCache.size > 40) thumbCache.delete(thumbCache.keys().next().value);
+      if (thumbWant === k) setThumb(cv);
+    }
+  } catch (e) { console.warn(e); }
+  finally { thumbBusy = false; }
+}
+
+slider.addEventListener('input', () => { sliding = true; showBubble(); });
+slider.addEventListener('change', () => {
+  sliding = false; hideBubble(); thumbWant = 0;
+  goTo(+slider.value);
+  if (document.activeElement === slider && !slider.matches(':focus-visible')) slider.blur();
+});
+slider.addEventListener('blur', () => { if (sliding) { sliding = false; hideBubble(); updateSlider(); } });
 
 /* ---- スクロールモードの現在ページ追跡 ---- */
 let scrollRAF = 0;
@@ -1401,6 +1520,7 @@ const isNarrow = () => window.matchMedia('(max-width:760px)').matches;
 let sideT;
 function renderSideList() { clearTimeout(sideT); sideT = setTimeout(renderSideListNow, 60); }
 function renderSideListNow() {
+  updateMarks();
   const box = $('#memoList');
   if (!S.pdf) { box.innerHTML = '<p class="empty">PDFを開くと、メモや書き込みの一覧が表示されます</p>'; return; }
   const pages = new Set([...Object.keys(ann.strokes), ...Object.keys(ann.notes)].map(Number));
