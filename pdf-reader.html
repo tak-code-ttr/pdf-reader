@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-FE6lVdz/Bmoz7+mwSMOCmirmHDRZKRp106fiQ/UIvTQ=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' 'sha256-mpPwVVNphzlFVZDuMo/Q5B18MdPANlOfcEYgrx1pNpM=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 
 <title>PDFリーダー</title>
 <style>
@@ -57,16 +57,24 @@ header{
 #docTitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;padding:0 6px}
 .nav{display:flex;align-items:center;gap:2px}
 #pageInput{
-  width:64px;height:32px;text-align:center;border:1px solid var(--line);border-radius:8px;
-  background:var(--bg);color:var(--fg);font-size:15px;-webkit-user-select:text;user-select:text;
+  width:64px;min-width:64px;max-width:120px;height:32px;padding:0 8px;text-align:center;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);color:var(--fg);font-size:15px;font-variant-numeric:tabular-nums;-webkit-user-select:text;user-select:text;
 }
 #pageTotal{color:var(--muted);min-width:44px;white-space:nowrap}
 .sep{width:1px;height:24px;background:var(--line);margin:0 4px;flex:none}
 @media (max-width:480px){
   .lbl{display:none}
   #docTitle{padding:0 2px;font-size:13px}
-  #pageInput{width:54px}
+  #pageInput{min-width:54px}
   .sep{display:none}
+  /* スマホ幅ではヘッダーに収まるよう、前後ボタン（スワイプ・画面端タップ・スライダーで代用）と
+     全画面ボタン（⋯メニューにもある）を隠す */
+  #btnLeft, #btnRight, #btnFull{display:none}
+  #pageTotal{min-width:0}
+}
+@media (max-width:360px){
+  header{gap:0}
+  header .btn{min-width:34px;padding:0 4px}
 }
 
 /* ---------- メイン ---------- */
@@ -977,6 +985,7 @@ function updatePageUI() {
     if (S.mode === 'spread') { const g = groupPages(groupIndexOf(S.current)); inp.value = g.length > 1 ? g[0] + '-' + g[1] : String(g[0]); }
     else inp.value = String(S.current);
   }
+  fitPageInput();
   $('#pageTotal').textContent = '/ ' + S.N;
   const left = forwardIsLeft() ? 1 : -1;
   $('#btnLeft').disabled = !canStep(left);
@@ -988,7 +997,13 @@ function updatePageUI() {
 $('#btnLeft').addEventListener('click', () => stepSide('left'));
 $('#btnRight').addEventListener('click', () => stepSide('right'));
 const pageInput = $('#pageInput');
-pageInput.addEventListener('focus', () => { pageInput.value = String(S.current); setTimeout(() => pageInput.select(), 0); });
+// 「100-101」や「1000-1001」のような長い表示でも切れないよう、入力欄の幅を中身に合わせる
+function fitPageInput() {
+  const len = Math.max(pageInput.value.length, String(S.N || 0).length);
+  pageInput.style.width = `calc(${len}ch + 18px)`;
+}
+pageInput.addEventListener('input', fitPageInput);
+pageInput.addEventListener('focus', () => { pageInput.value = String(S.current); fitPageInput(); setTimeout(() => pageInput.select(), 0); });
 pageInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); pageInput.blur(); } });
 pageInput.addEventListener('blur', () => {
   const v = parseInt(pageInput.value, 10);
