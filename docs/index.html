@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-REjBERa4NIQlQPJ9y7Ry5FHG7jzmm2SVLCsyWNUWC3Q=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' 'sha256-YZJzI1yj7lyTgDApyhswOHU3o+PO3CzQHr4/a7ezjs8=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -103,10 +103,10 @@ body.pen-only .page svg.ink{touch-action:pan-x pan-y}
 @keyframes flash{50%{transform:scale(1.6);box-shadow:0 0 0 8px rgba(37,99,235,.35)}}
 /* 付箋：ページ上に本文とリンクを表示する。大きさはページの拡大率（--s）に合わせる */
 .sticky{
-  position:absolute;pointer-events:auto;touch-action:none;cursor:grab;color:#222;
+  position:absolute;pointer-events:auto;touch-action:none;cursor:grab;color:#222;--fs:10;
   width:calc(var(--s,1) * 150px);min-height:calc(var(--s,1) * 40px);
   padding:calc(var(--s,1) * 6px) calc(var(--s,1) * 7px);
-  font-size:calc(var(--s,1) * 10px);line-height:1.45;border-radius:calc(var(--s,1) * 2px);
+  font-size:calc(var(--s,1) * var(--fs) * 1px);line-height:1.45;border-radius:calc(var(--s,1) * 2px);
   box-shadow:0 2px 6px rgba(0,0,0,.3);white-space:pre-wrap;overflow-wrap:anywhere;
 }
 .sticky .sticky-link{display:block;margin-top:calc(var(--s,1) * 4px);color:#0b57d0;text-decoration:underline;word-break:break-all;cursor:pointer}
@@ -241,6 +241,11 @@ footer{
 .note-colors .swatch{width:24px;height:24px;border-radius:6px}
 .meta-time{font-size:12px;color:var(--muted);font-weight:400}
 .link-fields{display:flex;flex-direction:column;gap:6px}
+.sticky-style{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sticky-style .seg{flex:1;min-width:200px}
+.sticky-style .lbl2{font-size:12px;color:var(--muted)}
+.text-colors{display:flex;gap:6px}
+.text-colors .swatch{width:24px;height:24px}
 .link-fields input{
   width:100%;height:38px;border:1px solid var(--line);border-radius:10px;padding:0 10px;
   background:var(--bg);color:var(--fg);font-size:16px;-webkit-user-select:text;user-select:text;
@@ -389,6 +394,11 @@ body.bars-hidden #fullExit{display:inline-flex}
       <div><span id="memoTitle">メモ</span> <span class="meta-time" id="memoTime"></span></div>
       <div class="note-colors" id="noteColors"></div>
     </div>
+    <div class="sticky-style hidden" id="stickyStyle">
+      <span class="lbl2">文字</span>
+      <div class="seg" id="segFs"><button data-v="8">小</button><button data-v="10">中</button><button data-v="13">大</button><button data-v="16">特大</button></div>
+      <div class="text-colors" id="textColors"></div>
+    </div>
     <textarea id="memoText" placeholder="メモを入力"></textarea>
     <div class="link-fields hidden" id="linkFields">
       <input id="linkUrl" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="リンク先 URL（https://… ／ 省略可）">
@@ -504,6 +514,8 @@ const MAX_PIXELS = isIOS ? 4.5e6 : 16e6;
 const MARKER_COLORS = ['#ffe066', '#8ce99a', '#ff8fab', '#74c0fc', '#ffa94d'];
 const PEN_COLORS = ['#e03131', '#1c7ed6', '#2b8a3e', '#212529', '#f08c00'];
 const NOTE_COLORS = ['#ffd43b', '#ff8fab', '#8ce99a', '#74c0fc', '#b197fc'];
+const STICKY_FS = [8, 10, 13, 16];            // 付箋の文字サイズ（ページ座標の単位）：小・中・大・特大
+const STICKY_TC = ['#222222', '#e03131', '#1c7ed6', '#2b8a3e', '#7048e8']; // 付箋の文字色
 const MARKER_W = [7, 12, 18];
 const PEN_W = [0.8, 1.6, 3];
 const ZMIN = 0.25, ZMAX = 8;
@@ -547,7 +559,8 @@ const S = {
   pdf: null, N: 0, sizes: [], known: [], maxW: 0, maxH: 0, key: null, name: '',
   mode: 'single', dir: 'ltr', coverAlone: true, fit: 'page', zoom: 1, scale: 1,
   current: 1, tool: 'view', penOnly: false, straight: true,
-  color: { marker: MARKER_COLORS[0], pen: PEN_COLORS[0] }, size: { marker: 1, pen: 1 }
+  color: { marker: MARKER_COLORS[0], pen: PEN_COLORS[0] }, size: { marker: 1, pen: 1 },
+  sticky: { fs: 10, tc: STICKY_TC[0] } // 新しい付箋の文字サイズ・文字色（前回使ったものを引き継ぐ）
 };
 const PREF_KEY = 'pdfreader:prefs';
 (function loadPrefs() {
@@ -560,9 +573,11 @@ const PREF_KEY = 'pdfreader:prefs';
     if (p.color && list.includes(p.color[t])) S.color[t] = p.color[t];
     if (p.size && [0, 1, 2].includes(p.size[t])) S.size[t] = p.size[t];
   }
+  if (p.sticky && STICKY_FS.includes(p.sticky.fs)) S.sticky.fs = p.sticky.fs;
+  if (p.sticky && STICKY_TC.includes(p.sticky.tc)) S.sticky.tc = p.sticky.tc;
 })();
 function savePrefs() {
-  lsSet(PREF_KEY, { mode: S.mode, dir: S.dir, coverAlone: S.coverAlone, fit: S.fit, penOnly: S.penOnly, straight: S.straight, color: S.color, size: S.size });
+  lsSet(PREF_KEY, { mode: S.mode, dir: S.dir, coverAlone: S.coverAlone, fit: S.fit, penOnly: S.penOnly, straight: S.straight, color: S.color, size: S.size, sticky: S.sticky });
 }
 
 // 注釈の種類：strokes（ペン・マーカー）、notes（メモ）、stickies（付箋）。いずれも { ページ番号: [項目...] }
@@ -1293,6 +1308,8 @@ function drawAnn(el) {
     d.style.left = (st.x / s.w * 100) + '%';
     d.style.top = (st.y / s.h * 100) + '%';
     d.style.background = st.c;
+    if (STICKY_FS.includes(st.fs)) d.style.setProperty('--fs', st.fs);
+    if (STICKY_TC.includes(st.tc)) d.style.color = st.tc;
     if (st.text) { const t = document.createElement('div'); t.textContent = st.text; d.append(t); }
     const url = safeUrl(st.url);
     if (url) {
@@ -1573,8 +1590,11 @@ function eraseAt(d, p) {
 /* ================= メモ編集 ================= */
 let editing = null;
 function openEditor(n, note, isNew, kind = 'notes') {
-  editing = { n, note, isNew, kind, color: note.c };
   const sticky = kind === 'stickies';
+  editing = { n, note, isNew, kind, color: note.c,
+    fs: STICKY_FS.includes(note.fs) ? note.fs : isNew ? S.sticky.fs : 10,
+    tc: STICKY_TC.includes(note.tc) ? note.tc : isNew ? S.sticky.tc : STICKY_TC[0] };
+  $('#stickyStyle').classList.toggle('hidden', !sticky);
   $('#memoTitle').textContent = `${sticky ? '付箋' : 'メモ'}（${n}ページ）`;
   $('#memoText').placeholder = sticky ? '付箋に書く内容を入力' : 'メモを入力';
   $('#linkFields').classList.toggle('hidden', !sticky);
@@ -1588,7 +1608,21 @@ function openEditor(n, note, isNew, kind = 'notes') {
 }
 function renderNoteColors() {
   $('#noteColors').innerHTML = NOTE_COLORS.map(c => `<button class="swatch${editing.color === c ? ' on' : ''}" data-c="${c}" style="background:${c}"></button>`).join('');
+  // 付箋は入力欄を付箋と同じ背景色・文字色にして仕上がりを確認できるようにする
+  const ta = $('#memoText'), sticky = editing.kind === 'stickies';
+  ta.style.background = sticky ? editing.color : ''; ta.style.color = sticky ? editing.tc : '';
+  if (!sticky) return;
+  $('#textColors').innerHTML = STICKY_TC.map(c => `<button class="swatch${editing.tc === c ? ' on' : ''}" data-c="${c}" title="文字色" style="background:${c}"></button>`).join('');
+  $$('#segFs button').forEach(b => b.classList.toggle('on', +b.dataset.v === editing.fs));
 }
+$('#textColors').addEventListener('click', e => {
+  const b = e.target.closest('.swatch'); if (!b || !editing) return;
+  editing.tc = b.dataset.c; renderNoteColors();
+});
+$('#segFs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !editing) return;
+  editing.fs = +b.dataset.v; renderNoteColors();
+});
 $('#noteColors').addEventListener('click', e => {
   const b = e.target.closest('.swatch'); if (!b || !editing) return;
   editing.color = b.dataset.c; renderNoteColors();
@@ -1613,10 +1647,15 @@ $('#memoSave').addEventListener('click', () => {
   const list = ann[kind][n] || (ann[kind][n] = []);
   if (!text.trim() && !url) {
     if (!isNew) { pushUndo(n); ann[kind][n] = list.filter(x => x.id !== note.id); }
-  } else if (isNew || text !== note.text || editing.color !== note.c || url !== (note.url || '') || lt !== (note.lt || '')) {
+  } else if (isNew || text !== note.text || editing.color !== note.c || url !== (note.url || '') || lt !== (note.lt || '')
+             || (kind === 'stickies' && (editing.fs !== (note.fs || 10) || editing.tc !== (note.tc || STICKY_TC[0])))) {
     pushUndo(n);
     note.text = text; note.c = editing.color; note.u = Date.now();
-    if (kind === 'stickies') { if (url) { note.url = url; note.lt = lt; } else { delete note.url; delete note.lt; } }
+    if (kind === 'stickies') {
+      if (url) { note.url = url; note.lt = lt; } else { delete note.url; delete note.lt; }
+      note.fs = editing.fs; note.tc = editing.tc;
+      S.sticky = { fs: editing.fs, tc: editing.tc }; savePrefs();
+    }
     if (isNew) list.push(note);
   }
   tidy(n); saveAnn(); refreshPage(n); renderSideList(); closeEditor();
@@ -1828,6 +1867,8 @@ function cleanSticky(st) {
   if (!o) return null;
   const url = st.url == null ? '' : safeUrl(st.url);
   if (url) { o.url = url; if (typeof st.lt === 'string') o.lt = st.lt.slice(0, 500); }
+  if (STICKY_FS.includes(st.fs)) o.fs = st.fs;
+  if (STICKY_TC.includes(st.tc)) o.tc = st.tc;
   return o.text || o.url ? o : null;
 }
 $('#importInput').addEventListener('change', async e => {
@@ -1880,10 +1921,11 @@ function pdfPathOps(p) { // 画面の描画（pathD）と同じ曲線を PDF の
   return ops + ` ${xy(p[p.length - 1])} l`;
 }
 // 付箋の見た目（画面の .sticky と同じ寸法：幅150・余白6/7・文字10・行間1.45、単位はページ座標）を画像として描く
-const STICKY = { w: 150, padX: 7, padY: 6, font: 10, lh: 14.5, gap: 4, minH: 40 };
+const STICKY = { w: 150, padX: 7, padY: 6, gap: 4, minH: 40 };
 function layoutSticky(st) {
+  const fs = STICKY_FS.includes(st.fs) ? st.fs : 10, lh = fs * 1.45;
   const g = document.createElement('canvas').getContext('2d');
-  g.font = `${STICKY.font}px ${getComputedStyle(document.body).fontFamily}`;
+  g.font = `${fs}px ${getComputedStyle(document.body).fontFamily}`;
   const maxW = STICKY.w - STICKY.padX * 2, lines = [];
   const wrap = (str, link) => {
     for (const para of str.split('\n')) {
@@ -1898,9 +1940,9 @@ function layoutSticky(st) {
   if (st.text) wrap(st.text, false);
   if (url) wrap(st.lt || url, true);
   const textLines = lines.filter(l => !l.link).length, linkLines = lines.length - textLines;
-  const linkTop = STICKY.padY + textLines * STICKY.lh + (textLines && linkLines ? STICKY.gap : 0);
-  const h = Math.max(STICKY.minH, linkTop + linkLines * STICKY.lh + STICKY.padY);
-  return { lines, url, h, linkTop, linkLines, textLines, font: g.font };
+  const linkTop = STICKY.padY + textLines * lh + (textLines && linkLines ? STICKY.gap : 0);
+  const h = Math.max(STICKY.minH, linkTop + linkLines * lh + STICKY.padY);
+  return { lines, url, h, linkTop, linkLines, textLines, font: g.font, fs, lh, tc: STICKY_TC.includes(st.tc) ? st.tc : STICKY_TC[0] };
 }
 async function stickyPng(st, L, k = 4) {
   const cv = document.createElement('canvas');
@@ -1910,10 +1952,10 @@ async function stickyPng(st, L, k = 4) {
   g.fillStyle = st.c; g.fillRect(0, 0, STICKY.w, L.h);
   g.font = L.font; g.textBaseline = 'middle';
   L.lines.forEach((l, i) => {
-    const y = (l.link ? L.linkTop + (i - L.textLines) * STICKY.lh : STICKY.padY + i * STICKY.lh) + STICKY.lh / 2;
-    g.fillStyle = l.link ? '#0b57d0' : '#222';
+    const y = (l.link ? L.linkTop + (i - L.textLines) * L.lh : STICKY.padY + i * L.lh) + L.lh / 2;
+    g.fillStyle = l.link ? '#0b57d0' : L.tc;
     g.fillText(l.t, STICKY.padX, y);
-    if (l.link) g.fillRect(STICKY.padX, y + STICKY.font * 0.55, g.measureText(l.t).width, 0.6);
+    if (l.link) g.fillRect(STICKY.padX, y + L.fs * 0.55, g.measureText(l.t).width, Math.max(0.6, L.fs * 0.06));
   });
   return new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/png'))).arrayBuffer());
 }
@@ -1969,7 +2011,7 @@ async function buildAnnotatedPdf() {
     })];
     if (L.url) out.push(ctx.obj({
       Type: 'Annot', Subtype: 'Link', Border: [0, 0, 0], F: 4,
-      Rect: box(st.x, st.y + L.linkTop, st.x + STICKY.w, st.y + L.linkTop + L.linkLines * STICKY.lh),
+      Rect: box(st.x, st.y + L.linkTop, st.x + STICKY.w, st.y + L.linkTop + L.linkLines * L.lh),
       A: { Type: 'Action', S: 'URI', URI: PDFString.of(L.url) }
     }));
     return out;
