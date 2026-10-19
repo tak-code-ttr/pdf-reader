@@ -19,6 +19,7 @@ OUT = ROOT / "pdf-reader.html"
 SITE = ROOT / "docs"
 PWA = ROOT / "pwa"
 PDFJS = ROOT / "vendor" / "pdfjs-dist-3.11.174"
+PDFLIB = ROOT / "vendor" / "pdf-lib-1.17.1" / "pdf-lib.min.js"
 PWA_FILES = ("manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png")
 PWA_HEAD = (
     '<link rel="manifest" href="manifest.webmanifest">\n'
@@ -39,7 +40,7 @@ def script_safe(text, label):
 
 def add_script_hashes(html):
     """CSP の 'unsafe-inline' の代わりに、埋め込んだ各スクリプトのハッシュだけを実行許可する。
-    ワーカー本体（type="text/plain"）も、Worker が使えない環境で <script> として実行するため含める。"""
+    type="text/plain" のもの（ワーカー本体・pdf-lib）も、必要時に <script> として実行するため含める。"""
     bodies = re.findall(r"<script(?: [^>]*)?>(.*?)</script>", html, re.S)
     hashes = sorted({"'sha256-" + base64.b64encode(hashlib.sha256(b.encode("utf-8")).digest()).decode() + "'"
                      for b in bodies if b.strip()})
@@ -57,6 +58,7 @@ def main():
 
     lib = script_safe((PDFJS / "build" / "pdf.min.js").read_text(encoding="utf-8"), "pdf.min.js")
     worker = script_safe((PDFJS / "build" / "pdf.worker.min.js").read_text(encoding="utf-8"), "pdf.worker.min.js")
+    pdflib = script_safe(PDFLIB.read_text(encoding="utf-8"), "pdf-lib.min.js")
     assets = {
         "cmaps": {p.stem: b64(p) for p in sorted((PDFJS / "cmaps").glob("*.bcmap"))},
         "fonts": {p.name: b64(p) for p in sorted((PDFJS / "standard_fonts").iterdir())
@@ -66,7 +68,9 @@ def main():
         "<!-- PDF.js 3.11.174 (Apache-2.0, Mozilla Foundation) を埋め込み。build.py で生成 -->\n"
         f"<script>{lib}</script>\n"
         f'<script id="pdfjs-worker" type="text/plain">{worker}</script>\n'
-        f'<script id="pdfjs-assets" type="application/json">{json.dumps(assets, separators=(",", ":"))}</script>'
+        f'<script id="pdfjs-assets" type="application/json">{json.dumps(assets, separators=(",", ":"))}</script>\n'
+        "<!-- pdf-lib 1.17.1 (MIT) 注釈をPDFに埋め込むときだけ実行する -->\n"
+        f'<script id="pdflib-src" type="text/plain">{pdflib}</script>'
     )
     html = add_script_hashes(replace_marker(src, "PDFJS_EMBED", embed))
 
