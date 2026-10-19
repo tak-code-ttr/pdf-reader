@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' 'sha256-YZJzI1yj7lyTgDApyhswOHU3o+PO3CzQHr4/a7ezjs8=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-FE6lVdz/Bmoz7+mwSMOCmirmHDRZKRp106fiQ/UIvTQ=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -103,14 +103,26 @@ body.pen-only .page svg.ink{touch-action:pan-x pan-y}
 @keyframes flash{50%{transform:scale(1.6);box-shadow:0 0 0 8px rgba(37,99,235,.35)}}
 /* 付箋：ページ上に本文とリンクを表示する。大きさはページの拡大率（--s）に合わせる */
 .sticky{
-  position:absolute;pointer-events:auto;touch-action:none;cursor:grab;color:#222;--fs:10;
-  width:calc(var(--s,1) * 150px);min-height:calc(var(--s,1) * 40px);
+  position:absolute;pointer-events:auto;touch-action:none;cursor:grab;color:#222;--fs:10;--w:150;--h:40;
+  width:calc(var(--s,1) * var(--w) * 1px);min-height:calc(var(--s,1) * var(--h) * 1px);
+  -webkit-touch-callout:none;
   padding:calc(var(--s,1) * 6px) calc(var(--s,1) * 7px);
   font-size:calc(var(--s,1) * var(--fs) * 1px);line-height:1.45;border-radius:calc(var(--s,1) * 2px);
   box-shadow:0 2px 6px rgba(0,0,0,.3);white-space:pre-wrap;overflow-wrap:anywhere;
 }
 .sticky .sticky-link{display:block;margin-top:calc(var(--s,1) * 4px);color:#0b57d0;text-decoration:underline;word-break:break-all;cursor:pointer}
 .sticky.flash{animation:flash2 1.2s ease 2}
+/* 長押しで大きさ変更モード：右下の丸いハンドルをドラッグ */
+.sticky.resizing{outline:2px dashed var(--accent);outline-offset:3px;cursor:move}
+.sticky .rs-handle{
+  display:none;position:absolute;right:-14px;bottom:-14px;width:28px;height:28px;padding:0;border:0;
+  background:transparent;cursor:nwse-resize;touch-action:none;
+}
+.sticky .rs-handle::after{
+  content:"";position:absolute;inset:6px;border-radius:50%;background:var(--accent);
+  border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);
+}
+.sticky.resizing .rs-handle{display:block}
 @keyframes flash2{50%{box-shadow:0 0 0 6px rgba(37,99,235,.5)}}
 
 #empty{
@@ -1175,7 +1187,8 @@ viewer.addEventListener('touchstart', e => {
     swipe = null;
   } else if (e.touches.length === 1) {
     const t = e.touches[0];
-    swipe = { x: t.clientX, y: t.clientY, t: Date.now(), sl: viewer.scrollLeft, stylus: t.touchType === 'stylus' };
+    // メモ・付箋のドラッグや大きさ変更をスワイプ（ページ送り）と取り違えないようにする
+    swipe = e.target.closest('.note, .sticky') ? null : { x: t.clientX, y: t.clientY, t: Date.now(), sl: viewer.scrollLeft, stylus: t.touchType === 'stylus' };
   } else swipe = null;
 }, { passive: false });
 viewer.addEventListener('touchmove', e => {
@@ -1255,7 +1268,7 @@ document.addEventListener('keydown', e => {
     case 'n': case 'N': setTool('memo'); break;
     case 's': case 'S': setTool('sticky'); break;
     case 'f': case 'F': setFull(!full); break;
-    case 'Escape': closePops(); setTool('view'); if (full) setFull(false); break;
+    case 'Escape': closePops(); setTool('view'); exitResize(); if (full) setFull(false); break;
   }
 });
 
@@ -1309,6 +1322,9 @@ function drawAnn(el) {
     d.style.top = (st.y / s.h * 100) + '%';
     d.style.background = st.c;
     if (STICKY_FS.includes(st.fs)) d.style.setProperty('--fs', st.fs);
+    if (st.w) d.style.setProperty('--w', st.w);
+    if (st.h) d.style.setProperty('--h', st.h);
+    if (st.id === resizingId) d.classList.add('resizing');
     if (STICKY_TC.includes(st.tc)) d.style.color = st.tc;
     if (st.text) { const t = document.createElement('div'); t.textContent = st.text; d.append(t); }
     const url = safeUrl(st.url);
@@ -1318,6 +1334,8 @@ function drawAnn(el) {
       a.textContent = st.lt || url;
       d.append(a);
     }
+    const hd = document.createElement('span'); hd.className = 'rs-handle'; hd.title = 'ドラッグで大きさを変更';
+    d.append(hd);
     layer.append(d);
   }
 }
@@ -1430,7 +1448,35 @@ function cancelDrawing() {
   drawing = null;
 }
 
+/* ---- 付箋の大きさ変更（長押しでモード開始、右下ハンドルをドラッグ、付箋の外をタップで終了） ---- */
+const STICKY_MIN_W = 40, STICKY_MAX_W = 600, STICKY_MIN_H = 20;
+let resizingId = null, sizeDrag = null;
+function enterResize(d) {
+  exitResize();
+  resizingId = d.dataset.id; d.classList.add('resizing');
+  if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
+  toast('右下の丸をドラッグして大きさを変更（付箋の外をタップで終了）', 3000);
+}
+function exitResize() {
+  if (!resizingId) return;
+  resizingId = null;
+  $$('.sticky.resizing').forEach(x => x.classList.remove('resizing'));
+}
+document.addEventListener('pointerdown', e => { if (resizingId && !e.target.closest('.sticky.resizing')) exitResize(); }, true);
+pagesEl.addEventListener('contextmenu', e => { if (e.target.closest('.sticky')) e.preventDefault(); });
+
 pagesEl.addEventListener('pointerdown', e => {
+  // 付箋の大きさ変更ハンドル
+  const hd = e.target.closest('.rs-handle');
+  if (hd) {
+    const d = hd.closest('.sticky'), el = d.closest('.page'), n = el._n;
+    const st = (ann.stickies[n] || []).find(x => x.id === d.dataset.id);
+    if (!st) return;
+    e.preventDefault(); e.stopPropagation();
+    try { hd.setPointerCapture(e.pointerId); } catch (_) {}
+    sizeDrag = { pid: e.pointerId, el, n, st, d, moved: false };
+    return;
+  }
   // メモアイコン・付箋（付箋のリンク部分はブラウザ標準のリンク動作に任せる）
   if (e.target.closest('.sticky-link')) return;
   const nb = e.target.closest('.note, .sticky');
@@ -1442,7 +1488,9 @@ pagesEl.addEventListener('pointerdown', e => {
     e.preventDefault(); e.stopPropagation();
     try { nb.setPointerCapture(e.pointerId); } catch (_) {}
     const p = toPage(e, el);
-    noteDrag = { pid: e.pointerId, el, n, kind, note, btn: nb, sx: e.clientX, sy: e.clientY, off: [note.x - p[0], note.y - p[1]], moved: false };
+    const d = noteDrag = { pid: e.pointerId, el, n, kind, note, btn: nb, sx: e.clientX, sy: e.clientY, off: [note.x - p[0], note.y - p[1]], moved: false };
+    // 付箋を動かさずに長押し → 大きさ変更モード
+    if (kind === 'stickies' && !nb.classList.contains('resizing')) d.lp = setTimeout(() => { if (noteDrag === d && !d.moved) { d.longPressed = true; enterResize(nb); } }, 500);
     return;
   }
   const svg = e.target.closest('svg.ink');
@@ -1475,9 +1523,20 @@ pagesEl.addEventListener('pointerdown', e => {
 });
 
 window.addEventListener('pointermove', e => {
+  if (sizeDrag && e.pointerId === sizeDrag.pid) {
+    const d = sizeDrag, st = d.st, s = S.sizes[d.n - 1];
+    if (!d.moved) { d.moved = true; pushUndo(d.n); }
+    const p = toPage(e, d.el);
+    st.w = r1(clamp(p[0] - st.x, STICKY_MIN_W, Math.max(STICKY_MIN_W, Math.min(STICKY_MAX_W, s.w - st.x))));
+    st.h = r1(clamp(p[1] - st.y, STICKY_MIN_H, Math.max(STICKY_MIN_H, s.h - st.y)));
+    d.d.style.setProperty('--w', st.w); d.d.style.setProperty('--h', st.h);
+    return;
+  }
   if (noteDrag && e.pointerId === noteDrag.pid) {
     const d = noteDrag;
+    if (d.longPressed) return;
     if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 6) return;
+    clearTimeout(d.lp);
     if (!d.moved) { d.moved = true; pushUndo(d.n); }
     const p = toPage(e, d.el), s = S.sizes[d.n - 1];
     d.note.x = r1(clamp(p[0] + d.off[0], 0, s.w - 10)); d.note.y = r1(clamp(p[1] + d.off[1], 0, s.h - 10));
@@ -1529,10 +1588,22 @@ window.addEventListener('pointermove', e => {
 }, { passive: false });
 
 function endPointer(e, cancelled) {
+  if (sizeDrag && e.pointerId === sizeDrag.pid) {
+    const d = sizeDrag; sizeDrag = null;
+    if (d.moved) {
+      // 文字が入りきらない高さにはしない（実際に表示されている高さを保存）
+      d.st.h = r1(Math.max(d.st.h, d.d.offsetHeight / d.el._scale));
+      d.d.style.setProperty('--h', d.st.h);
+      saveAnn();
+    }
+    return;
+  }
   if (noteDrag && e.pointerId === noteDrag.pid) {
     const d = noteDrag; noteDrag = null;
+    clearTimeout(d.lp);
+    if (d.longPressed) return;
     if (d.moved) { saveAnn(); renderSideList(); }
-    else if (!cancelled) openEditor(d.n, d.note, false, d.kind);
+    else if (!cancelled && !d.btn.classList.contains('resizing')) openEditor(d.n, d.note, false, d.kind);
     return;
   }
   if (memoTap && e.pointerId === memoTap.pid) {
@@ -1868,6 +1939,8 @@ function cleanSticky(st) {
   const url = st.url == null ? '' : safeUrl(st.url);
   if (url) { o.url = url; if (typeof st.lt === 'string') o.lt = st.lt.slice(0, 500); }
   if (STICKY_FS.includes(st.fs)) o.fs = st.fs;
+  if (num(st.w)) o.w = r1(clamp(st.w, STICKY_MIN_W, STICKY_MAX_W));
+  if (num(st.h)) o.h = r1(clamp(st.h, STICKY_MIN_H, 2000));
   if (STICKY_TC.includes(st.tc)) o.tc = st.tc;
   return o.text || o.url ? o : null;
 }
@@ -1924,9 +1997,10 @@ function pdfPathOps(p) { // 画面の描画（pathD）と同じ曲線を PDF の
 const STICKY = { w: 150, padX: 7, padY: 6, gap: 4, minH: 40 };
 function layoutSticky(st) {
   const fs = STICKY_FS.includes(st.fs) ? st.fs : 10, lh = fs * 1.45;
+  const W = st.w || STICKY.w, minH = st.h || STICKY.minH;
   const g = document.createElement('canvas').getContext('2d');
   g.font = `${fs}px ${getComputedStyle(document.body).fontFamily}`;
-  const maxW = STICKY.w - STICKY.padX * 2, lines = [];
+  const maxW = W - STICKY.padX * 2, lines = [];
   const wrap = (str, link) => {
     for (const para of str.split('\n')) {
       let cur = '';
@@ -1941,15 +2015,15 @@ function layoutSticky(st) {
   if (url) wrap(st.lt || url, true);
   const textLines = lines.filter(l => !l.link).length, linkLines = lines.length - textLines;
   const linkTop = STICKY.padY + textLines * lh + (textLines && linkLines ? STICKY.gap : 0);
-  const h = Math.max(STICKY.minH, linkTop + linkLines * lh + STICKY.padY);
-  return { lines, url, h, linkTop, linkLines, textLines, font: g.font, fs, lh, tc: STICKY_TC.includes(st.tc) ? st.tc : STICKY_TC[0] };
+  const h = Math.max(minH, linkTop + linkLines * lh + STICKY.padY);
+  return { lines, url, w: W, h, linkTop, linkLines, textLines, font: g.font, fs, lh, tc: STICKY_TC.includes(st.tc) ? st.tc : STICKY_TC[0] };
 }
 async function stickyPng(st, L, k = 4) {
   const cv = document.createElement('canvas');
-  cv.width = Math.ceil(STICKY.w * k); cv.height = Math.ceil(L.h * k);
+  cv.width = Math.ceil(L.w * k); cv.height = Math.ceil(L.h * k);
   const g = cv.getContext('2d');
   g.scale(k, k);
-  g.fillStyle = st.c; g.fillRect(0, 0, STICKY.w, L.h);
+  g.fillStyle = st.c; g.fillRect(0, 0, L.w, L.h);
   g.font = L.font; g.textBaseline = 'middle';
   L.lines.forEach((l, i) => {
     const y = (l.link ? L.linkTop + (i - L.textLines) * L.lh : STICKY.padY + i * L.lh) + L.lh / 2;
@@ -2003,15 +2077,15 @@ async function buildAnnotatedPdf() {
       return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])].map(f3);
     };
     const a = rotation * Math.PI / 180, cs = Math.round(Math.cos(a)), sn = Math.round(Math.sin(a));
-    const ap = form(`q ${STICKY.w} 0 0 ${f3(L.h)} 0 0 cm /Im0 Do Q`, [0, 0, STICKY.w, f3(L.h)], { XObject: { Im0: img.ref } }, [cs, sn, -sn, cs, 0, 0]);
+    const ap = form(`q ${f3(L.w)} 0 0 ${f3(L.h)} 0 0 cm /Im0 Do Q`, [0, 0, f3(L.w), f3(L.h)], { XObject: { Im0: img.ref } }, [cs, sn, -sn, cs, 0, 0]);
     const out = [ctx.obj({
-      Type: 'Annot', Subtype: 'Stamp', Rect: box(st.x, st.y, st.x + STICKY.w, st.y + L.h),
+      Type: 'Annot', Subtype: 'Stamp', Rect: box(st.x, st.y, st.x + L.w, st.y + L.h),
       Contents: PDFHexString.fromText([st.text, L.url].filter(Boolean).join('\n')),
       F: 4, NM: PDFString.of(st.id), M: pdfDate(st.u || st.t), AP: { N: ap }
     })];
     if (L.url) out.push(ctx.obj({
       Type: 'Annot', Subtype: 'Link', Border: [0, 0, 0], F: 4,
-      Rect: box(st.x, st.y + L.linkTop, st.x + STICKY.w, st.y + L.linkTop + L.linkLines * L.lh),
+      Rect: box(st.x, st.y + L.linkTop, st.x + L.w, st.y + L.linkTop + L.linkLines * L.lh),
       A: { Type: 'Action', S: 'URI', URI: PDFString.of(L.url) }
     }));
     return out;
