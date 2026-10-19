@@ -200,6 +200,9 @@ footer{
 }
 .toolset{display:flex;align-items:center;gap:2px}
 .toolset .btn{min-width:44px}
+.toolset [data-tool="eraser"]{touch-action:none}
+.btn.pressing{animation:press .7s linear forwards}
+@keyframes press{to{background:rgba(224,49,49,.4)}}
 .opts{display:flex;align-items:center;justify-content:center;gap:6px;height:38px;min-width:330px}
 @media (max-width:640px){ .opts{order:-1;width:100%;min-width:0} }
 .swatch{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
@@ -346,7 +349,7 @@ body.bars-hidden #fullExit{display:inline-flex}
     <button class="btn on" data-tool="view" title="閲覧 (V)"><span data-icon="hand"></span></button>
     <button class="btn" data-tool="marker" title="ラインマーカー (M)"><span data-icon="marker"></span></button>
     <button class="btn" data-tool="pen" title="ペン (P)"><span data-icon="pen"></span></button>
-    <button class="btn" data-tool="eraser" title="消しゴム (E)"><span data-icon="eraser"></span></button>
+    <button class="btn" data-tool="eraser" title="消しゴム (E)・長押しでこのページの注釈をすべて削除"><span data-icon="eraser"></span></button>
     <button class="btn" data-tool="memo" title="メモ (N)"><span data-icon="note"></span></button>
     <div class="sep"></div>
     <button class="btn" id="btnUndo" title="元に戻す (Ctrl+Z)" disabled><span data-icon="undo"></span></button>
@@ -1216,7 +1219,7 @@ function updateOpts() {
   } else {
     const msg = {
       view: S.mode === 'scroll' ? 'スクロールで閲覧・ピンチで拡大' : (isTouch ? '左右スワイプ／画面端タップでページ送り' : '←→キー・ホイール・画面端クリックでページ送り'),
-      eraser: 'なぞった書き込みを消します',
+      eraser: 'なぞった書き込みを消します（ボタン長押しでこのページの注釈をすべて削除）',
       memo: 'ページをタップしてメモを追加（メモはドラッグで移動）'
     };
     hint.textContent = msg[t] || '';
@@ -1231,6 +1234,34 @@ $('#sizes').addEventListener('click', e => {
   S.size[S.tool] = +b.dataset.i; savePrefs(); updateOpts();
 });
 $('#btnStraight').addEventListener('click', () => { S.straight = !S.straight; savePrefs(); updateOpts(); });
+
+/* ---- 消しゴムの長押し：表示中のページの注釈をすべて削除（確認ダイアログあり） ---- */
+const eraserBtn = $('[data-tool="eraser"]');
+let lpT = null, lpFired = false;
+eraserBtn.addEventListener('pointerdown', e => {
+  if (e.button > 0) return;
+  lpFired = false; clearTimeout(lpT);
+  eraserBtn.classList.add('pressing');
+  lpT = setTimeout(() => { lpT = null; lpFired = true; eraserBtn.classList.remove('pressing'); clearPageAnn(); }, 700);
+});
+const cancelLongPress = () => { clearTimeout(lpT); lpT = null; eraserBtn.classList.remove('pressing'); };
+['pointerup', 'pointerleave', 'pointercancel'].forEach(t => eraserBtn.addEventListener(t, cancelLongPress));
+eraserBtn.addEventListener('contextmenu', e => e.preventDefault());
+// 長押しの後に続くクリックで消しゴムツールに切り替わらないようにする
+eraserBtn.addEventListener('click', e => { if (lpFired) { lpFired = false; e.stopImmediatePropagation(); } }, true);
+
+function clearPageAnn() {
+  if (!S.pdf) { toast('先にPDFを開いてください'); return; }
+  const list = S.mode === 'spread' ? groupPages(groupIndexOf(S.current)) : [S.current];
+  const label = list.join('-') + 'ページ';
+  const targets = list.filter(n => (ann.strokes[n] || []).length || (ann.notes[n] || []).length);
+  if (!targets.length) { toast(label + 'には注釈がありません'); return; }
+  const cnt = targets.reduce((a, n) => a + (ann.strokes[n] || []).length + (ann.notes[n] || []).length, 0);
+  if (!confirm(`${label}のすべての注釈を削除します。\n（マーカー・ペン・メモ ${cnt}件。削除後も「元に戻す」で復元できます）`)) return;
+  for (const n of targets) { pushUndo(n); delete ann.strokes[n]; delete ann.notes[n]; refreshPage(n); }
+  saveAnn(); renderSideList();
+  toast(`${label}の注釈を削除しました`);
+}
 
 /* ================= 書き込み（ペン・マーカー・消しゴム・メモ） ================= */
 let drawing = null, memoTap = null, noteDrag = null;
