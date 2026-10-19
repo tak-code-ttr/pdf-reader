@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' 'sha256-hkyKdYqif9OPO4W7xWPxuhEHpHcx/1cK71lQI+sEXkQ=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-REjBERa4NIQlQPJ9y7Ry5FHG7jzmm2SVLCsyWNUWC3Q=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 
 <title>PDFリーダー</title>
 <style>
@@ -88,7 +88,7 @@ header{
 .page svg.ink{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;mix-blend-mode:multiply}
 body.t-marker .page svg.ink, body.t-pen .page svg.ink, body.t-eraser .page svg.ink{pointer-events:auto;touch-action:none;cursor:crosshair}
 body.t-eraser .page svg.ink{cursor:cell}
-body.t-memo .page svg.ink{pointer-events:auto;touch-action:pan-x pan-y;cursor:copy}
+body.t-memo .page svg.ink, body.t-sticky .page svg.ink{pointer-events:auto;touch-action:pan-x pan-y;cursor:copy}
 body.pen-only .page svg.ink{touch-action:pan-x pan-y}
 .notes{position:absolute;inset:0;pointer-events:none}
 .note{
@@ -99,6 +99,17 @@ body.pen-only .page svg.ink{touch-action:pan-x pan-y}
 .note svg{width:18px;height:18px}
 .note.flash{animation:flash 1.2s ease 2}
 @keyframes flash{50%{transform:scale(1.6);box-shadow:0 0 0 8px rgba(37,99,235,.35)}}
+/* 付箋：ページ上に本文とリンクを表示する。大きさはページの拡大率（--s）に合わせる */
+.sticky{
+  position:absolute;pointer-events:auto;touch-action:none;cursor:grab;color:#222;
+  width:calc(var(--s,1) * 150px);min-height:calc(var(--s,1) * 40px);
+  padding:calc(var(--s,1) * 6px) calc(var(--s,1) * 7px);
+  font-size:calc(var(--s,1) * 10px);line-height:1.45;border-radius:calc(var(--s,1) * 2px);
+  box-shadow:0 2px 6px rgba(0,0,0,.3);white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.sticky .sticky-link{display:block;margin-top:calc(var(--s,1) * 4px);color:#0b57d0;text-decoration:underline;word-break:break-all;cursor:pointer}
+.sticky.flash{animation:flash2 1.2s ease 2}
+@keyframes flash2{50%{box-shadow:0 0 0 6px rgba(37,99,235,.5)}}
 
 #empty{
   position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -227,6 +238,13 @@ footer{
 .note-colors{display:flex;gap:6px}
 .note-colors .swatch{width:24px;height:24px;border-radius:6px}
 .meta-time{font-size:12px;color:var(--muted);font-weight:400}
+.link-fields{display:flex;flex-direction:column;gap:6px}
+.link-fields input{
+  width:100%;height:38px;border:1px solid var(--line);border-radius:10px;padding:0 10px;
+  background:var(--bg);color:var(--fg);font-size:16px;-webkit-user-select:text;user-select:text;
+}
+.memo-item .link{color:var(--accent);font-size:12px;word-break:break-all}
+.memo-item .dot.sq{border-radius:1px}
 
 /* ---------- 全画面表示（ツールバーを隠す） ---------- */
 body.bars-hidden header, body.bars-hidden footer{display:none}
@@ -351,6 +369,7 @@ body.bars-hidden #fullExit{display:inline-flex}
     <button class="btn" data-tool="pen" title="ペン (P)"><span data-icon="pen"></span></button>
     <button class="btn" data-tool="eraser" title="消しゴム (E)・長押しでこのページの注釈をすべて削除"><span data-icon="eraser"></span></button>
     <button class="btn" data-tool="memo" title="メモ (N)"><span data-icon="note"></span></button>
+    <button class="btn" data-tool="sticky" title="付箋 (S)"><span data-icon="sticky"></span></button>
     <div class="sep"></div>
     <button class="btn" id="btnUndo" title="元に戻す (Ctrl+Z)" disabled><span data-icon="undo"></span></button>
   </div>
@@ -369,6 +388,10 @@ body.bars-hidden #fullExit{display:inline-flex}
       <div class="note-colors" id="noteColors"></div>
     </div>
     <textarea id="memoText" placeholder="メモを入力"></textarea>
+    <div class="link-fields hidden" id="linkFields">
+      <input id="linkUrl" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="リンク先 URL（https://… ／ 省略可）">
+      <input id="linkText" type="text" autocomplete="off" placeholder="リンクの表示名（省略時は URL を表示）">
+    </div>
     <div class="sheet-foot">
       <button class="btn danger" id="memoDelete">削除</button>
       <span class="grow"></span>
@@ -382,7 +405,7 @@ body.bars-hidden #fullExit{display:inline-flex}
   <div class="sheet">
     <div class="sheet-head">注釈付きPDFを作成しました</div>
     <div id="saveInfo" style="line-height:1.6"></div>
-    <div class="meta-time">ペン・マーカーは「インク注釈」、メモは「ノート注釈」として保存されるため、プレビューや Acrobat などでも表示・編集できます。</div>
+    <div class="meta-time">ペン・マーカーは「インク注釈」、メモは「ノート注釈」、付箋は「スタンプ注釈」（リンクはクリックで開けます）として保存されるため、プレビューや Acrobat などでも表示・編集できます。</div>
     <div class="sheet-foot">
       <span class="grow"></span>
       <button class="btn" id="saveClose">閉じる</button>
@@ -501,6 +524,7 @@ const ICONS = {
   note: '<path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5Z"/><path d="M15 3v6h6"/>',
   undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>',
   lines: '<path d="M6 8h12M6 12h12M6 16h8"/>',
+  sticky: '<path d="M5 3h14a2 2 0 0 1 2 2v9l-7 7H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 21v-5a2 2 0 0 1 2-2h5"/>',
   expand: '<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
   shrink: '<path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/>'
 };
@@ -539,7 +563,19 @@ function savePrefs() {
   lsSet(PREF_KEY, { mode: S.mode, dir: S.dir, coverAlone: S.coverAlone, fit: S.fit, penOnly: S.penOnly, straight: S.straight, color: S.color, size: S.size });
 }
 
-let ann = { strokes: {}, notes: {} };
+// 注釈の種類：strokes（ペン・マーカー）、notes（メモ）、stickies（付箋）。いずれも { ページ番号: [項目...] }
+const KINDS = ['strokes', 'notes', 'stickies'];
+const emptyAnn = () => ({ strokes: {}, notes: {}, stickies: {} });
+let ann = emptyAnn();
+const annCount = n => KINDS.reduce((a, k) => a + (ann[k][n] || []).length, 0);
+const annPages = () => [...new Set(KINDS.flatMap(k => Object.keys(ann[k])).map(Number))].filter(n => n >= 1 && n <= S.N).sort((a, b) => a - b);
+// リンクは http(s) と mailto のみ許可（javascript: などは無効にする）。スキーム省略時は https:// を補う
+function safeUrl(str) {
+  str = String(str || '').trim();
+  if (!str) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(str)) str = 'https://' + str;
+  try { const u = new URL(str); return ['http:', 'https:', 'mailto:'].includes(u.protocol) ? u.href : null; } catch (e) { return null; }
+}
 let undoStack = [];
 let saveT = null;
 function saveAnn(now) {
@@ -641,8 +677,7 @@ async function openData(data, name, size) {
   S.known = new Array(S.N).fill(false); S.known[0] = true;
   calcMax();
 
-  ann = lsGet('pdfreader:ann:' + S.key, null) || { strokes: {}, notes: {} };
-  ann.strokes = ann.strokes || {}; ann.notes = ann.notes || {};
+  ann = Object.assign(emptyAnn(), lsGet('pdfreader:ann:' + S.key, null) || {});
   undoStack = []; updateUndoBtn();
   S.zoom = 1;
   S.current = clamp(lsGet('pdfreader:pos:' + S.key, 1) | 0, 1, S.N);
@@ -734,6 +769,7 @@ function setElSize(el, scale) {
   el.style.width = Math.floor(s.w * scale) + 'px';
   el.style.height = Math.floor(s.h * scale) + 'px';
   el._svg.setAttribute('viewBox', `0 0 ${s.w} ${s.h}`);
+  el.style.setProperty('--s', scale);
   el._scale = scale;
 }
 
@@ -950,9 +986,7 @@ function updateMarks() {
   const box = $('#pageMarks');
   box.textContent = '';
   if (!S.pdf || S.N < 2) return;
-  const pages = new Set([...Object.keys(ann.strokes), ...Object.keys(ann.notes)].map(Number));
-  for (const n of pages) {
-    if (!(n >= 1 && n <= S.N)) continue;
+  for (const n of annPages()) {
     const i = document.createElement('i');
     i.style.setProperty('--f', (n - 1) / (S.N - 1));
     box.append(i);
@@ -1146,7 +1180,7 @@ viewer.addEventListener('touchend', e => {
   }
   if (!swipe || e.touches.length || S.mode === 'scroll' || !S.pdf || swipe.stylus) { swipe = null; return; }
   if (lastTouchDraw >= swipe.t - 30) { swipe = null; return; }
-  if (isDrawTool() && !S.penOnly && S.tool !== 'memo') { swipe = null; return; }
+  if (isDrawTool() && !S.penOnly && S.tool !== 'memo' && S.tool !== 'sticky') { swipe = null; return; }
   const t = e.changedTouches[0];
   const dx = t.clientX - swipe.x, dy = t.clientY - swipe.y, dt = Date.now() - swipe.t;
   const sw = swipe; swipe = null;
@@ -1163,7 +1197,7 @@ viewer.addEventListener('touchcancel', () => { if (pinch) { pinch = null; pagesE
 /* ---- 画面端タップでページ送り（閲覧ツール時） ---- */
 viewer.addEventListener('click', e => {
   if (!S.pdf || S.tool !== 'view') return;
-  if (e.target.closest('.note')) return;
+  if (e.target.closest('.note, .sticky')) return;
   const rect = viewer.getBoundingClientRect();
   const x = (e.clientX - rect.left) / rect.width;
   const edge = S.mode !== 'scroll' && viewer.scrollWidth - viewer.clientWidth <= 2;
@@ -1202,6 +1236,7 @@ document.addEventListener('keydown', e => {
     case 'p': case 'P': setTool('pen'); break;
     case 'e': case 'E': setTool('eraser'); break;
     case 'n': case 'N': setTool('memo'); break;
+    case 's': case 'S': setTool('sticky'); break;
     case 'f': case 'F': setFull(!full); break;
     case 'Escape': closePops(); setTool('view'); if (full) setFull(false); break;
   }
@@ -1250,6 +1285,22 @@ function drawAnn(el) {
     b.innerHTML = NOTE_ICON;
     layer.append(b);
   }
+  for (const st of ann.stickies[n] || []) {
+    const d = document.createElement('div');
+    d.className = 'sticky'; d.dataset.id = st.id;
+    d.style.left = (st.x / s.w * 100) + '%';
+    d.style.top = (st.y / s.h * 100) + '%';
+    d.style.background = st.c;
+    if (st.text) { const t = document.createElement('div'); t.textContent = st.text; d.append(t); }
+    const url = safeUrl(st.url);
+    if (url) {
+      const a = document.createElement('a');
+      a.className = 'sticky-link'; a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.textContent = st.lt || url;
+      d.append(a);
+    }
+    layer.append(d);
+  }
 }
 function refreshPage(n) { const el = pageEls.get(n); if (el) drawAnn(el); }
 
@@ -1258,7 +1309,7 @@ function isDrawTool() { return S.tool !== 'view'; }
 function setTool(t) {
   if (!S.pdf && t !== 'view') { toast('先にPDFを開いてください'); return; }
   S.tool = t;
-  document.body.classList.remove('t-view', 't-marker', 't-pen', 't-eraser', 't-memo');
+  document.body.classList.remove('t-view', 't-marker', 't-pen', 't-eraser', 't-memo', 't-sticky');
   document.body.classList.add('t-' + t);
   $$('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   updateOpts();
@@ -1283,7 +1334,8 @@ function updateOpts() {
     const msg = {
       view: S.mode === 'scroll' ? 'スクロールで閲覧・ピンチで拡大' : (isTouch ? '左右スワイプ／画面端タップでページ送り' : '←→キー・ホイール・画面端クリックでページ送り'),
       eraser: 'なぞった書き込みを消します（ボタン長押しでこのページの注釈をすべて削除）',
-      memo: 'ページをタップしてメモを追加（メモはドラッグで移動）'
+      memo: 'ページをタップしてメモを追加（メモはドラッグで移動）',
+      sticky: 'ページをタップして付箋を追加（ドラッグで移動・リンクはタップで開く）'
     };
     hint.textContent = msg[t] || '';
   }
@@ -1317,11 +1369,11 @@ function clearPageAnn() {
   if (!S.pdf) { toast('先にPDFを開いてください'); return; }
   const list = S.mode === 'spread' ? groupPages(groupIndexOf(S.current)) : [S.current];
   const label = list.join('-') + 'ページ';
-  const targets = list.filter(n => (ann.strokes[n] || []).length || (ann.notes[n] || []).length);
+  const targets = list.filter(n => annCount(n));
   if (!targets.length) { toast(label + 'には注釈がありません'); return; }
-  const cnt = targets.reduce((a, n) => a + (ann.strokes[n] || []).length + (ann.notes[n] || []).length, 0);
-  if (!confirm(`${label}のすべての注釈を削除します。\n（マーカー・ペン・メモ ${cnt}件。削除後も「元に戻す」で復元できます）`)) return;
-  for (const n of targets) { pushUndo(n); delete ann.strokes[n]; delete ann.notes[n]; refreshPage(n); }
+  const cnt = targets.reduce((a, n) => a + annCount(n), 0);
+  if (!confirm(`${label}のすべての注釈を削除します。\n（マーカー・ペン・メモ・付箋 ${cnt}件。削除後も「元に戻す」で復元できます）`)) return;
+  for (const n of targets) { pushUndo(n); for (const k of KINDS) delete ann[k][n]; refreshPage(n); }
   saveAnn(); renderSideList();
   toast(`${label}の注釈を削除しました`);
 }
@@ -1335,19 +1387,18 @@ function toPage(ev, el) {
   return [clamp((ev.clientX - r.left) / r.width * s.w, 0, s.w), clamp((ev.clientY - r.top) / r.height * s.h, 0, s.h)];
 }
 function pushUndo(n) {
-  undoStack.push({ n, strokes: clone(ann.strokes[n] || []), notes: clone(ann.notes[n] || []) });
+  undoStack.push({ n, data: Object.fromEntries(KINDS.map(k => [k, clone(ann[k][n] || [])])) });
   if (undoStack.length > 200) undoStack.shift();
   updateUndoBtn();
 }
 function updateUndoBtn() { $('#btnUndo').disabled = !undoStack.length; }
 function tidy(n) {
-  if (ann.strokes[n] && !ann.strokes[n].length) delete ann.strokes[n];
-  if (ann.notes[n] && !ann.notes[n].length) delete ann.notes[n];
+  for (const k of KINDS) if (ann[k][n] && !ann[k][n].length) delete ann[k][n];
 }
 function undo() {
   const u = undoStack.pop(); updateUndoBtn();
   if (!u) return;
-  ann.strokes[u.n] = u.strokes; ann.notes[u.n] = u.notes; tidy(u.n);
+  for (const k of KINDS) ann[k][u.n] = u.data[k]; tidy(u.n);
   saveAnn(); refreshPage(u.n); renderSideList();
   if (!pageEls.has(u.n)) toast(`${u.n}ページの操作を取り消しました`);
 }
@@ -1361,16 +1412,18 @@ function cancelDrawing() {
 }
 
 pagesEl.addEventListener('pointerdown', e => {
-  // メモアイコン
-  const nb = e.target.closest('.note');
+  // メモアイコン・付箋（付箋のリンク部分はブラウザ標準のリンク動作に任せる）
+  if (e.target.closest('.sticky-link')) return;
+  const nb = e.target.closest('.note, .sticky');
   if (nb) {
     const el = nb.closest('.page');
-    const n = el._n;
-    const note = (ann.notes[n] || []).find(x => x.id === nb.dataset.id);
+    const n = el._n, kind = nb.classList.contains('sticky') ? 'stickies' : 'notes';
+    const note = (ann[kind][n] || []).find(x => x.id === nb.dataset.id);
     if (!note) return;
     e.preventDefault(); e.stopPropagation();
     try { nb.setPointerCapture(e.pointerId); } catch (_) {}
-    noteDrag = { pid: e.pointerId, el, n, note, btn: nb, sx: e.clientX, sy: e.clientY, moved: false };
+    const p = toPage(e, el);
+    noteDrag = { pid: e.pointerId, el, n, kind, note, btn: nb, sx: e.clientX, sy: e.clientY, off: [note.x - p[0], note.y - p[1]], moved: false };
     return;
   }
   const svg = e.target.closest('svg.ink');
@@ -1380,8 +1433,8 @@ pagesEl.addEventListener('pointerdown', e => {
   const el = svg.parentElement, n = el._n;
   const p = toPage(e, el);
 
-  if (S.tool === 'memo') {
-    memoTap = { pid: e.pointerId, el, n, p, x: e.clientX, y: e.clientY };
+  if (S.tool === 'memo' || S.tool === 'sticky') {
+    memoTap = { pid: e.pointerId, el, n, p, x: e.clientX, y: e.clientY, kind: S.tool === 'sticky' ? 'stickies' : 'notes' };
     return;
   }
   e.preventDefault();
@@ -1407,9 +1460,8 @@ window.addEventListener('pointermove', e => {
     const d = noteDrag;
     if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 6) return;
     if (!d.moved) { d.moved = true; pushUndo(d.n); }
-    const p = toPage(e, d.el);
-    d.note.x = r1(p[0]); d.note.y = r1(p[1]);
-    const s = S.sizes[d.n - 1];
+    const p = toPage(e, d.el), s = S.sizes[d.n - 1];
+    d.note.x = r1(clamp(p[0] + d.off[0], 0, s.w - 10)); d.note.y = r1(clamp(p[1] + d.off[1], 0, s.h - 10));
     d.btn.style.left = (d.note.x / s.w * 100) + '%';
     d.btn.style.top = (d.note.y / s.h * 100) + '%';
     return;
@@ -1461,12 +1513,12 @@ function endPointer(e, cancelled) {
   if (noteDrag && e.pointerId === noteDrag.pid) {
     const d = noteDrag; noteDrag = null;
     if (d.moved) { saveAnn(); renderSideList(); }
-    else if (!cancelled) openEditor(d.n, d.note, false);
+    else if (!cancelled) openEditor(d.n, d.note, false, d.kind);
     return;
   }
   if (memoTap && e.pointerId === memoTap.pid) {
     const m = memoTap; memoTap = null;
-    if (!cancelled) openEditor(m.n, { id: uid(), x: r1(m.p[0]), y: r1(m.p[1]), text: '', c: NOTE_COLORS[0], t: Date.now() }, true);
+    if (!cancelled) openEditor(m.n, { id: uid(), x: r1(m.p[0]), y: r1(m.p[1]), text: '', c: NOTE_COLORS[0], t: Date.now() }, true, m.kind);
     return;
   }
   if (!drawing || e.pointerId !== drawing.pid) return;
@@ -1518,9 +1570,13 @@ function eraseAt(d, p) {
 
 /* ================= メモ編集 ================= */
 let editing = null;
-function openEditor(n, note, isNew) {
-  editing = { n, note, isNew, color: note.c };
-  $('#memoTitle').textContent = `メモ（${n}ページ）`;
+function openEditor(n, note, isNew, kind = 'notes') {
+  editing = { n, note, isNew, kind, color: note.c };
+  const sticky = kind === 'stickies';
+  $('#memoTitle').textContent = `${sticky ? '付箋' : 'メモ'}（${n}ページ）`;
+  $('#memoText').placeholder = sticky ? '付箋に書く内容を入力' : 'メモを入力';
+  $('#linkFields').classList.toggle('hidden', !sticky);
+  $('#linkUrl').value = note.url || ''; $('#linkText').value = note.lt || '';
   $('#memoTime').textContent = note.t ? new Date(note.u || note.t).toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }) : '';
   $('#memoText').value = note.text || '';
   $('#memoDelete').classList.toggle('hidden', isNew);
@@ -1544,25 +1600,32 @@ $('#memoText').addEventListener('keydown', e => {
 });
 $('#memoSave').addEventListener('click', () => {
   if (!editing) return;
-  const { n, note, isNew } = editing;
+  const { n, note, isNew, kind } = editing;
   const text = $('#memoText').value;
-  const list = ann.notes[n] || (ann.notes[n] = []);
-  if (!text.trim()) {
-    if (!isNew) { pushUndo(n); ann.notes[n] = list.filter(x => x.id !== note.id); }
-  } else if (isNew || text !== note.text || editing.color !== note.c) {
+  let url = '', lt = '';
+  if (kind === 'stickies') {
+    url = safeUrl($('#linkUrl').value);
+    if (url === null) { toast('リンクは https:// ・ http:// ・ mailto: で始まるものを入力してください', 3500); $('#linkUrl').focus(); return; }
+    lt = url ? $('#linkText').value.trim() : '';
+  }
+  const list = ann[kind][n] || (ann[kind][n] = []);
+  if (!text.trim() && !url) {
+    if (!isNew) { pushUndo(n); ann[kind][n] = list.filter(x => x.id !== note.id); }
+  } else if (isNew || text !== note.text || editing.color !== note.c || url !== (note.url || '') || lt !== (note.lt || '')) {
     pushUndo(n);
     note.text = text; note.c = editing.color; note.u = Date.now();
+    if (kind === 'stickies') { if (url) { note.url = url; note.lt = lt; } else { delete note.url; delete note.lt; } }
     if (isNew) list.push(note);
   }
   tidy(n); saveAnn(); refreshPage(n); renderSideList(); closeEditor();
 });
 $('#memoDelete').addEventListener('click', () => {
   if (!editing) return;
-  const { n, note } = editing;
+  const { n, note, kind } = editing;
   pushUndo(n);
-  ann.notes[n] = (ann.notes[n] || []).filter(x => x.id !== note.id);
+  ann[kind][n] = (ann[kind][n] || []).filter(x => x.id !== note.id);
   tidy(n); saveAnn(); refreshPage(n); renderSideList(); closeEditor();
-  toast('メモを削除しました（元に戻す で復元できます）');
+  toast(`${kind === 'stickies' ? '付箋' : 'メモ'}を削除しました（元に戻す で復元できます）`);
 });
 
 /* ================= サイドバー ================= */
@@ -1586,8 +1649,7 @@ function renderSideListNow() {
   updateMarks();
   const box = $('#memoList');
   if (!S.pdf) { box.innerHTML = '<p class="empty">PDFを開くと、メモや書き込みの一覧が表示されます</p>'; return; }
-  const pages = new Set([...Object.keys(ann.strokes), ...Object.keys(ann.notes)].map(Number));
-  const sorted = [...pages].filter(n => n >= 1 && n <= S.N).sort((a, b) => a - b);
+  const sorted = annPages();
   if (!sorted.length) {
     box.innerHTML = '<p class="empty">まだメモや書き込みはありません。<br>下のツールバーからマーカー・ペン・メモを選んで書き込めます。</p>';
     return;
@@ -1597,17 +1659,22 @@ function renderSideListNow() {
     const g = document.createElement('div'); g.className = 'pg-group';
     const strokes = ann.strokes[n] || [];
     const mk = strokes.filter(s => s.t === 'marker').length, pn = strokes.length - mk;
-    const notes = (ann.notes[n] || []).slice().sort((a, b) => a.y - b.y || a.x - b.x);
-    const meta = [mk ? `マーカー${mk}` : '', pn ? `ペン${pn}` : '', notes.length ? `メモ${notes.length}` : ''].filter(Boolean).join('・');
+    const notes = (ann.notes[n] || []).map(x => ({ x, kind: 'notes' }));
+    const stickies = (ann.stickies[n] || []).map(x => ({ x, kind: 'stickies' }));
+    const items = [...notes, ...stickies].sort((a, b) => a.x.y - b.x.y || a.x.x - b.x.x);
+    const meta = [mk ? `マーカー${mk}` : '', pn ? `ペン${pn}` : '', notes.length ? `メモ${notes.length}` : '', stickies.length ? `付箋${stickies.length}` : ''].filter(Boolean).join('・');
     const h = document.createElement('button'); h.className = 'pg-head';
     h.innerHTML = `<span>${n}ページ</span><span class="meta">${meta}</span>`;
     h.addEventListener('click', () => { goTo(n); if (isNarrow()) toggleSide(false); });
     g.append(h);
-    for (const note of notes) {
+    for (const { x: note, kind } of items) {
       const it = document.createElement('button'); it.className = 'memo-item';
-      const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = note.c;
-      const tx = document.createElement('span'); tx.className = 'txt'; tx.textContent = note.text;
-      it.append(dot, tx);
+      const dot = document.createElement('span'); dot.className = 'dot' + (kind === 'stickies' ? ' sq' : ''); dot.style.background = note.c;
+      const body = document.createElement('span');
+      const tx = document.createElement('span'); tx.className = 'txt'; tx.textContent = (kind === 'stickies' ? '［付箋］' : '') + note.text;
+      body.append(tx);
+      if (note.url) { const ln = document.createElement('div'); ln.className = 'link'; ln.textContent = '🔗 ' + (note.lt || note.url); body.append(ln); }
+      it.append(dot, body);
       it.addEventListener('click', () => jumpToNote(n, note));
       g.append(it);
     }
@@ -1623,7 +1690,7 @@ function jumpToNote(n, note) {
       const s = S.sizes[n - 1];
       viewer.scrollTop = el.offsetTop + (note.y / s.h) * el.offsetHeight - viewer.clientHeight / 3;
     }
-    const b = el.querySelector(`.note[data-id="${note.id}"]`);
+    const b = el._notes.querySelector(`[data-id="${CSS.escape(note.id)}"]`);
     if (b) { b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
   });
 }
@@ -1754,17 +1821,24 @@ function cleanNote(nt) {
   if (num(nt.u)) o.u = nt.u;
   return o;
 }
+function cleanSticky(st) {
+  const o = cleanNote(Object.assign({ text: '' }, st));
+  if (!o) return null;
+  const url = st.url == null ? '' : safeUrl(st.url);
+  if (url) { o.url = url; if (typeof st.lt === 'string') o.lt = st.lt.slice(0, 500); }
+  return o.text || o.url ? o : null;
+}
 $('#importInput').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
   try {
     const data = JSON.parse(await f.text());
     const a = data.annotations || data;
-    if (!a || (typeof a.strokes !== 'object' && typeof a.notes !== 'object')) throw new Error('形式が正しくありません');
+    if (!a || KINDS.every(k => typeof a[k] !== 'object')) throw new Error('形式が正しくありません');
     if (data.fingerprint && data.fingerprint !== S.key && !confirm('このファイルは別のPDFの注釈のようです。読み込みますか？')) return;
     let cnt = 0;
-    for (const kind of ['strokes', 'notes']) {
-      const clean = kind === 'strokes' ? cleanStroke : cleanNote;
+    for (const kind of KINDS) {
+      const clean = { strokes: cleanStroke, notes: cleanNote, stickies: cleanSticky }[kind];
       for (const [n, list] of Object.entries(a[kind] || {})) {
         if (!/^\d+$/.test(n) || +n < 1 || +n > S.N || !Array.isArray(list)) continue;
         const cur = ann[kind][n] || (ann[kind][n] = []);
@@ -1803,6 +1877,45 @@ function pdfPathOps(p) { // 画面の描画（pathD）と同じ曲線を PDF の
   }
   return ops + ` ${xy(p[p.length - 1])} l`;
 }
+// 付箋の見た目（画面の .sticky と同じ寸法：幅150・余白6/7・文字10・行間1.45、単位はページ座標）を画像として描く
+const STICKY = { w: 150, padX: 7, padY: 6, font: 10, lh: 14.5, gap: 4, minH: 40 };
+function layoutSticky(st) {
+  const g = document.createElement('canvas').getContext('2d');
+  g.font = `${STICKY.font}px ${getComputedStyle(document.body).fontFamily}`;
+  const maxW = STICKY.w - STICKY.padX * 2, lines = [];
+  const wrap = (str, link) => {
+    for (const para of str.split('\n')) {
+      let cur = '';
+      for (const ch of para) {
+        if (cur && g.measureText(cur + ch).width > maxW) { lines.push({ t: cur, link }); cur = ch; } else cur += ch;
+      }
+      lines.push({ t: cur, link });
+    }
+  };
+  const url = safeUrl(st.url);
+  if (st.text) wrap(st.text, false);
+  if (url) wrap(st.lt || url, true);
+  const textLines = lines.filter(l => !l.link).length, linkLines = lines.length - textLines;
+  const linkTop = STICKY.padY + textLines * STICKY.lh + (textLines && linkLines ? STICKY.gap : 0);
+  const h = Math.max(STICKY.minH, linkTop + linkLines * STICKY.lh + STICKY.padY);
+  return { lines, url, h, linkTop, linkLines, textLines, font: g.font };
+}
+async function stickyPng(st, L, k = 4) {
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(STICKY.w * k); cv.height = Math.ceil(L.h * k);
+  const g = cv.getContext('2d');
+  g.scale(k, k);
+  g.fillStyle = st.c; g.fillRect(0, 0, STICKY.w, L.h);
+  g.font = L.font; g.textBaseline = 'middle';
+  L.lines.forEach((l, i) => {
+    const y = (l.link ? L.linkTop + (i - L.textLines) * STICKY.lh : STICKY.padY + i * STICKY.lh) + STICKY.lh / 2;
+    g.fillStyle = l.link ? '#0b57d0' : '#222';
+    g.fillText(l.t, STICKY.padX, y);
+    if (l.link) g.fillRect(STICKY.padX, y + STICKY.font * 0.55, g.measureText(l.t).width, 0.6);
+  });
+  return new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/png'))).arrayBuffer());
+}
+
 async function buildAnnotatedPdf() {
   const { PDFDocument, PDFHexString, PDFString } = loadPdfLib();
   const doc = await PDFDocument.load(new Uint8Array(await S.file.arrayBuffer()), { updateMetadata: false });
@@ -1837,15 +1950,39 @@ async function buildAnnotatedPdf() {
     });
   }
 
+  // 付箋：画像を外観にしたスタンプ注釈（本文とURLは注釈の内容にも入れる）＋リンク部分に URI リンク注釈
+  async function stickyAnnots(st, toPdf, rotation) {
+    const L = layoutSticky(st);
+    const img = await doc.embedPng(await stickyPng(st, L));
+    const box = (x0, y0, x1, y1) => {
+      const a = toPdf([x0, y0]), b = toPdf([x1, y1]);
+      return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])].map(f3);
+    };
+    const a = rotation * Math.PI / 180, cs = Math.round(Math.cos(a)), sn = Math.round(Math.sin(a));
+    const ap = form(`q ${STICKY.w} 0 0 ${f3(L.h)} 0 0 cm /Im0 Do Q`, [0, 0, STICKY.w, f3(L.h)], { XObject: { Im0: img.ref } }, [cs, sn, -sn, cs, 0, 0]);
+    const out = [ctx.obj({
+      Type: 'Annot', Subtype: 'Stamp', Rect: box(st.x, st.y, st.x + STICKY.w, st.y + L.h),
+      Contents: PDFHexString.fromText([st.text, L.url].filter(Boolean).join('\n')),
+      F: 4, NM: PDFString.of(st.id), M: pdfDate(st.u || st.t), AP: { N: ap }
+    })];
+    if (L.url) out.push(ctx.obj({
+      Type: 'Annot', Subtype: 'Link', Border: [0, 0, 0], F: 4,
+      Rect: box(st.x, st.y + L.linkTop, st.x + STICKY.w, st.y + L.linkTop + L.linkLines * STICKY.lh),
+      A: { Type: 'Action', S: 'URI', URI: PDFString.of(L.url) }
+    }));
+    return out;
+  }
+
   let count = 0;
   for (let n = 1; n <= S.N; n++) {
-    const strokes = ann.strokes[n] || [], notes = ann.notes[n] || [];
-    if (!strokes.length && !notes.length) continue;
+    const strokes = ann.strokes[n] || [], notes = ann.notes[n] || [], stickies = ann.stickies[n] || [];
+    if (!strokes.length && !notes.length && !stickies.length) continue;
     const vp = (await S.pdf.getPage(n)).getViewport({ scale: 1 }); // 画面座標 → PDF座標（回転・余白を考慮）
     const toPdf = ([x, y]) => vp.convertToPdfPoint(x, y);
     const node = pages[n - 1].node;
     for (const st of strokes) { node.addAnnot(ctx.register(inkAnnot(st, toPdf))); count++; }
     for (const nt of notes) { node.addAnnot(ctx.register(noteAnnot(nt, toPdf, vp.rotation))); count++; }
+    for (const st of stickies) { for (const o of await stickyAnnots(st, toPdf, vp.rotation)) node.addAnnot(ctx.register(o)); count++; }
   }
   // 別のファイルとして扱われるよう ID を新しくする（このアプリで開き直したとき、元の注釈が二重に表示されないように）
   const id = () => PDFHexString.of(Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join(''));
@@ -1857,7 +1994,7 @@ let saveFile = null;
 $('#miEmbed').addEventListener('click', async () => {
   closePops();
   if (!S.pdf || !S.file) { toast('PDFを開いてください'); return; }
-  if (!Object.keys(ann.strokes).length && !Object.keys(ann.notes).length) { toast('埋め込む注釈（マーカー・ペン・メモ）がありません'); return; }
+  if (!annPages().length) { toast('埋め込む注釈（マーカー・ペン・メモ・付箋）がありません'); return; }
   showLoading(true);
   try {
     const { bytes, count } = await buildAnnotatedPdf();
@@ -1886,8 +2023,8 @@ $('#saveShare').addEventListener('click', () => {
 $('#miClear').addEventListener('click', () => {
   closePops();
   if (!S.pdf) return;
-  if (!confirm('この文書のマーカー・ペン・メモをすべて削除します。よろしいですか？\n（この操作は元に戻せません）')) return;
-  ann = { strokes: {}, notes: {} }; undoStack = []; updateUndoBtn();
+  if (!confirm('この文書のマーカー・ペン・メモ・付箋をすべて削除します。よろしいですか？\n（この操作は元に戻せません）')) return;
+  ann = emptyAnn(); undoStack = []; updateUndoBtn();
   saveAnn(true); for (const el of pageEls.values()) drawAnn(el); renderSideList();
   toast('注釈をすべて削除しました');
 });
