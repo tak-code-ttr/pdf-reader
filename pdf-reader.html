@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' 'sha256-mpPwVVNphzlFVZDuMo/Q5B18MdPANlOfcEYgrx1pNpM=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-6L9CAG6ddiW5wEOTjlqgcuO1MOHkFT22Xmsv7ujYgW0=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 
 <title>PDFリーダー</title>
 <style>
@@ -259,6 +259,12 @@ footer{
 .note-colors .swatch{width:24px;height:24px;border-radius:6px}
 .meta-time{font-size:12px;color:var(--muted);font-weight:400}
 .link-fields{display:flex;flex-direction:column;gap:6px}
+.page-op-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.6}
+.page-op-row input{
+  width:84px;height:38px;border:1px solid var(--line);border-radius:10px;padding:0 10px;text-align:center;
+  background:var(--bg);color:var(--fg);font-size:16px;font-variant-numeric:tabular-nums;-webkit-user-select:text;user-select:text;
+}
+.btn.primary.danger-fill{background:#e03131;color:#fff}
 .sticky-style{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .sticky-style .seg{flex:1;min-width:200px}
 .sticky-style .lbl2{font-size:12px;color:var(--muted)}
@@ -371,6 +377,10 @@ body.bars-hidden #fullExit{display:inline-flex}
     <input type="file" id="importInput" accept="application/json,.json" hidden>
     <button class="mi" id="miEmbed">注釈をPDFに埋め込んで保存</button>
     <hr>
+    <button class="mi" id="miInsert">空白ページを挿入…</button>
+    <button class="mi" id="miDelete">ページを削除…</button>
+    <button class="mi hidden" id="miSaveEdited">編集したPDFを保存</button>
+    <hr>
     <button class="mi" id="miFull">全画面表示</button>
     <hr>
     <button class="mi danger" id="miClear">この文書の注釈をすべて削除</button>
@@ -433,14 +443,28 @@ body.bars-hidden #fullExit{display:inline-flex}
 
 <div class="modal hidden" id="saveModal">
   <div class="sheet">
-    <div class="sheet-head">注釈付きPDFを作成しました</div>
-    <div id="saveInfo" style="line-height:1.6"></div>
-    <div class="meta-time">ペン・マーカーは「インク注釈」、メモは「ノート注釈」、付箋は「スタンプ注釈」（リンクはクリックで開けます）として保存されるため、プレビューや Acrobat などでも表示・編集できます。</div>
+    <div class="sheet-head" id="saveTitle">注釈付きPDFを作成しました</div>
+    <div id="saveInfo" style="line-height:1.6;white-space:pre-line"></div>
+    <div class="meta-time" id="saveNote"></div>
     <div class="sheet-foot">
       <span class="grow"></span>
       <button class="btn" id="saveClose">閉じる</button>
       <button class="btn" id="saveShare">共有…</button>
       <button class="btn primary" id="saveDownload">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="pageOpModal">
+  <div class="sheet">
+    <div class="sheet-head" id="pageOpTitle"></div>
+    <label class="page-op-row"><span id="pageOpPre"></span>
+      <input id="pageOpInput" type="text" inputmode="numeric" autocomplete="off"><span id="pageOpPost"></span></label>
+    <div class="meta-time" id="pageOpNote" style="line-height:1.6"></div>
+    <div class="sheet-foot">
+      <span class="grow"></span>
+      <button class="btn" id="pageOpCancel">キャンセル</button>
+      <button class="btn primary" id="pageOpOk"></button>
     </div>
   </div>
 </div>
@@ -679,10 +703,12 @@ window.addEventListener('drop', e => {
 });
 
 async function openFile(file) {
+  if (S.dirty && !confirm('ページを編集したPDFがまだ保存されていません。保存せずに別のファイルを開きますか？')) return;
   showLoading(true);
   try {
     const buf = await file.arrayBuffer();
     await openData(new Uint8Array(buf), file.name, file.size);
+    setDirty(false);
     S.file = file; // 注釈の埋め込み時に元のファイルを読み直す（PDF.js に渡したデータはワーカーへ移されるため）
   } catch (e) {
     console.error(e);
@@ -690,7 +716,8 @@ async function openFile(file) {
   } finally { showLoading(false); }
 }
 
-async function openData(data, name, size) {
+// opts.ann / opts.page：ページ編集後に読み直すとき、付け替えた注釈と表示ページを引き継ぐ
+async function openData(data, name, size, opts = {}) {
   const task = pdfjsLib.getDocument({
     data, CMapReaderFactory: EmbeddedCMapReaderFactory, StandardFontDataFactory: EmbeddedStandardFontDataFactory,
     isEvalSupported: false // CVE-2024-4367 対策（悪意あるPDFのフォントからのスクリプト実行を防ぐ）
@@ -712,12 +739,13 @@ async function openData(data, name, size) {
   S.known = new Array(S.N).fill(false); S.known[0] = true;
   calcMax();
 
-  ann = Object.assign(emptyAnn(), lsGet('pdfreader:ann:' + S.key, null) || {});
+  ann = Object.assign(emptyAnn(), opts.ann || lsGet('pdfreader:ann:' + S.key, null) || {});
   undoStack = []; updateUndoBtn();
-  S.zoom = 1;
-  S.current = clamp(lsGet('pdfreader:pos:' + S.key, 1) | 0, 1, S.N);
+  S.zoom = opts.ann ? S.zoom : 1;
+  S.current = clamp((opts.page || lsGet('pdfreader:pos:' + S.key, 1)) | 0, 1, S.N);
+  if (opts.ann) { saveAnn(true); savePos(); }
 
-  $('#docTitle').textContent = name.replace(/\.pdf$/i, '');
+  updateDocTitle();
   document.title = name + ' - PDFリーダー';
   $('#empty').classList.add('hidden');
   $('#pageInput').disabled = false;
@@ -727,7 +755,10 @@ async function openData(data, name, size) {
   renderSideList();
   buildOutline();
   loadAllSizes(pdf);
-  if (S.current > 1) toast(`前回の続き（${S.current}ページ）から表示しています`);
+  if (S.current > 1 && !opts.ann) toast(`前回の続き（${S.current}ページ）から表示しています`);
+}
+function updateDocTitle() {
+  $('#docTitle').textContent = S.name.replace(/\.pdf$/i, '') + (S.dirty ? '（未保存）' : '');
 }
 
 function calcMax() {
@@ -2121,7 +2152,15 @@ async function buildAnnotatedPdf() {
   return { bytes: await doc.save(), count };
 }
 
-let saveFile = null;
+let saveFile = null, saveDone = null;
+function showSaveSheet({ file, title, info, note = '', onSaved = null }) {
+  saveFile = file; saveDone = onSaved;
+  $('#saveTitle').textContent = title;
+  $('#saveInfo').textContent = info;
+  $('#saveNote').textContent = note;
+  $('#saveShare').classList.toggle('hidden', !(navigator.canShare && navigator.canShare({ files: [file] })));
+  $('#saveModal').classList.remove('hidden');
+}
 $('#miEmbed').addEventListener('click', async () => {
   closePops();
   if (!S.pdf || !S.file) { toast('PDFを開いてください'); return; }
@@ -2130,25 +2169,124 @@ $('#miEmbed').addEventListener('click', async () => {
   try {
     const { bytes, count } = await buildAnnotatedPdf();
     const name = S.name.replace(/\.pdf$/i, '') + '_注釈付き.pdf';
-    saveFile = new File([bytes], name, { type: 'application/pdf' });
-    $('#saveInfo').textContent = `${count}件の注釈を埋め込みました。\n${name}（${(bytes.length / 1e6).toFixed(1)} MB）`;
-    $('#saveInfo').style.whiteSpace = 'pre-line';
-    $('#saveShare').classList.toggle('hidden', !(navigator.canShare && navigator.canShare({ files: [saveFile] })));
-    $('#saveModal').classList.remove('hidden');
+    showSaveSheet({
+      file: new File([bytes], name, { type: 'application/pdf' }), title: '注釈付きPDFを作成しました',
+      info: `${count}件の注釈を埋め込みました。\n${name}（${(bytes.length / 1e6).toFixed(1)} MB）`,
+      note: 'ペン・マーカーは「インク注釈」、メモは「ノート注釈」、付箋は「スタンプ注釈」（リンクはクリックで開けます）として保存されるため、プレビューや Acrobat などでも表示・編集できます。'
+    });
   } catch (e) {
     console.error(e);
     toast(/encrypt/i.test(e && e.message) ? 'パスワードで保護されたPDFには埋め込めません' : '作成に失敗しました: ' + (e && e.message ? e.message : e), 4000);
   } finally { showLoading(false); }
 });
-const closeSaveSheet = () => { $('#saveModal').classList.add('hidden'); saveFile = null; };
+const closeSaveSheet = () => { $('#saveModal').classList.add('hidden'); saveFile = null; saveDone = null; };
 $('#saveClose').addEventListener('click', closeSaveSheet);
 $('#saveModal').addEventListener('pointerdown', e => { if (e.target.id === 'saveModal') closeSaveSheet(); });
-$('#saveDownload').addEventListener('click', () => { if (saveFile) { download(saveFile.name, saveFile); closeSaveSheet(); } });
+$('#saveDownload').addEventListener('click', () => { if (saveFile) { download(saveFile.name, saveFile); if (saveDone) saveDone(); closeSaveSheet(); } });
 $('#saveShare').addEventListener('click', () => {
   if (!saveFile) return;
+  const done = saveDone;
   navigator.share({ files: [saveFile], title: saveFile.name })
-    .then(closeSaveSheet)
+    .then(() => { if (done) done(); closeSaveSheet(); })
     .catch(e => { if (e.name !== 'AbortError') toast('共有できませんでした: ' + e.message, 3500); });
+});
+
+/* ---- ページの削除・空白ページの挿入 ---- */
+// PDF そのものを pdf-lib で書き換えて読み直す。注釈はページ番号の移動に合わせて付け替える。
+// 編集後の PDF は元とは別のファイルとして扱う（新しい ID を付ける）ので、元のファイルの注釈はそのまま残る。
+function setDirty(on) {
+  S.dirty = on;
+  $('#miSaveEdited').classList.toggle('hidden', !on);
+  if (S.pdf) updateDocTitle();
+}
+window.addEventListener('beforeunload', e => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+function remapAnn(map) { // map(n) → 新しいページ番号（null なら削除）
+  const out = emptyAnn();
+  for (const k of KINDS) for (const [n, list] of Object.entries(ann[k])) {
+    const m = map(+n);
+    if (m) out[k][m] = list;
+  }
+  return out;
+}
+async function editPdf(op, n) {
+  const { PDFDocument, PDFHexString } = loadPdfLib();
+  const doc = await PDFDocument.load(new Uint8Array(await S.file.arrayBuffer()), { updateMetadata: false });
+  if (op === 'delete') doc.removePage(n - 1);
+  else {
+    // n ページ目の後ろに、n ページ目と同じ大きさ・向きの空白ページを入れる
+    const src = doc.getPage(n - 1), mb = src.getMediaBox(), cb = src.getCropBox();
+    const pg = doc.insertPage(n, [mb.width, mb.height]);
+    pg.setMediaBox(mb.x, mb.y, mb.width, mb.height);
+    if (cb.x !== mb.x || cb.y !== mb.y || cb.width !== mb.width || cb.height !== mb.height) pg.setCropBox(cb.x, cb.y, cb.width, cb.height);
+    pg.setRotation(src.getRotation());
+  }
+  const id = () => PDFHexString.of(Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join(''));
+  doc.context.trailerInfo.ID = doc.context.obj([id(), id()]);
+  return doc.save();
+}
+async function runPageOp(op, n) {
+  showLoading(true);
+  try {
+    const bytes = await editPdf(op, n);
+    const newAnn = op === 'delete' ? remapAnn(m => m === n ? null : m > n ? m - 1 : m) : remapAnn(m => m > n ? m + 1 : m);
+    const page = op === 'delete' ? Math.min(n, S.N - 1) : n + 1;
+    const name = S.name;
+    await openData(bytes.slice(), name, bytes.length, { ann: newAnn, page });
+    S.file = new File([bytes], name, { type: 'application/pdf' });
+    setDirty(true);
+    if (S.mode !== 'scroll') goTo(page, { force: true });
+    toast(op === 'delete' ? `${n}ページを削除しました（保存は ⋯ →「編集したPDFを保存」）` : `${n}ページの後ろに空白ページを挿入しました（保存は ⋯ →「編集したPDFを保存」）`, 3500);
+  } catch (e) {
+    console.error(e);
+    toast(/encrypt/i.test(e && e.message) ? 'パスワードで保護されたPDFは編集できません' : 'ページの編集に失敗しました: ' + (e && e.message ? e.message : e), 4000);
+  } finally { showLoading(false); }
+}
+
+let pageOp = null;
+function openPageOp(op) {
+  closePops();
+  if (!S.pdf || !S.file) { toast('先にPDFを開いてください'); return; }
+  if (op === 'delete' && S.N <= 1) { toast('ページが1つしかないため削除できません'); return; }
+  pageOp = op;
+  const del = op === 'delete';
+  $('#pageOpTitle').textContent = del ? 'ページを削除' : '空白ページを挿入';
+  $('#pageOpPre').textContent = del ? '削除するページ：' : '';
+  $('#pageOpPost').textContent = del ? `ページ（全${S.N}ページ）` : `ページの後ろに挿入（全${S.N}ページ）`;
+  $('#pageOpNote').textContent = del
+    ? 'そのページに書き込んだマーカー・ペン・メモ・付箋も一緒に削除されます。この操作は「元に戻す」では戻せません（元のPDFファイルは変更されません）。'
+    : '指定したページと同じ大きさ・向きの空白ページが入ります。編集したPDFは ⋯ →「編集したPDFを保存」で保存してください（元のPDFファイルは変更されません）。';
+  $('#pageOpOk').textContent = del ? '削除' : '挿入';
+  $('#pageOpOk').classList.toggle('danger-fill', del);
+  $('#pageOpInput').value = String(S.current);
+  $('#pageOpModal').classList.remove('hidden');
+  $('#pageOpInput').focus(); $('#pageOpInput').select();
+}
+const closePageOp = () => { $('#pageOpModal').classList.add('hidden'); pageOp = null; };
+$('#miDelete').addEventListener('click', () => openPageOp('delete'));
+$('#miInsert').addEventListener('click', () => openPageOp('insert'));
+$('#pageOpCancel').addEventListener('click', closePageOp);
+$('#pageOpModal').addEventListener('pointerdown', e => { if (e.target.id === 'pageOpModal') closePageOp(); });
+$('#pageOpInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); $('#pageOpOk').click(); }
+  if (e.key === 'Escape') closePageOp();
+});
+$('#pageOpOk').addEventListener('click', () => {
+  if (!pageOp) return;
+  const n = parseInt($('#pageOpInput').value, 10);
+  if (!(n >= 1 && n <= S.N)) { toast(`1〜${S.N} のページ番号を入力してください`); $('#pageOpInput').focus(); return; }
+  const op = pageOp; closePageOp();
+  runPageOp(op, n);
+});
+$('#miSaveEdited').addEventListener('click', () => {
+  closePops();
+  if (!S.file || !S.dirty) return;
+  showSaveSheet({
+    file: S.file, title: '編集したPDFを保存',
+    info: `${S.name}（全${S.N}ページ、${(S.file.size / 1e6).toFixed(1)} MB）`,
+    note: '注釈（マーカー・ペン・メモ・付箋）はこのアプリ内に保存されています。保存したPDFをこのアプリで開くと注釈も表示されます。PDF自体に書き込みたい場合は「注釈をPDFに埋め込んで保存」を使ってください。',
+    onSaved: () => { setDirty(false); toast('編集したPDFを保存しました'); }
+  });
 });
 
 $('#miClear').addEventListener('click', () => {
