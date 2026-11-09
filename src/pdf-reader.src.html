@@ -277,6 +277,16 @@ footer{
 .memo-item .link{color:var(--accent);font-size:12px;word-break:break-all}
 .memo-item .dot.sq{border-radius:1px}
 
+/* ---------- 拡大鏡（閲覧ツールで長押し） ---------- */
+#loupe{
+  --d:190px;position:fixed;z-index:45;width:var(--d);height:var(--d);border-radius:50%;overflow:hidden;pointer-events:none;
+  background:var(--bg);border:3px solid #fff;box-shadow:0 6px 24px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.25);
+}
+@media (max-width:600px){ #loupe{--d:150px} }
+#loupeInner{position:absolute;left:0;top:0;background:#fff;will-change:transform}
+#loupeInner canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#loupeInner svg.ink{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:multiply}
+
 /* ---------- 全画面表示（ツールバーを隠す） ---------- */
 body.bars-hidden header, body.bars-hidden footer{display:none}
 #fullExit{
@@ -364,6 +374,16 @@ body.bars-hidden #fullExit{display:inline-flex}
       <div class="seg" id="segFit" style="margin-top:8px">
         <button data-v="page">ページ全体</button>
         <button data-v="width">幅に合わせる</button>
+      </div>
+    </div>
+    <div class="row">
+      <h4>拡大鏡（閲覧ツールでページを長押し）</h4>
+      <div class="seg" id="segLoupe">
+        <button data-v="0">オフ</button>
+        <button data-v="2">2倍</button>
+        <button data-v="2.5">2.5倍</button>
+        <button data-v="3">3倍</button>
+        <button data-v="4">4倍</button>
       </div>
     </div>
     <div class="row">
@@ -470,6 +490,7 @@ body.bars-hidden #fullExit{display:inline-flex}
 </div>
 
 <button class="btn" id="fullExit" title="全画面表示を終了"><span data-icon="shrink"></span></button>
+<div id="loupe" class="hidden"><div id="loupeInner"></div></div>
 <div id="toast"></div>
 
 <!--@@PDFJS_EMBED@@ build.py が PDF.js 本体・ワーカー・CMap・標準フォントをここに埋め込む -->
@@ -537,7 +558,7 @@ function toast(msg, ms = 2200) {
 const S = {
   pdf: null, N: 0, sizes: [], known: [], maxW: 0, maxH: 0, key: null, name: '',
   mode: 'single', dir: 'ltr', coverAlone: true, fit: 'page', zoom: 1, scale: 1,
-  current: 1, tool: 'view', penOnly: false, straight: true,
+  current: 1, tool: 'view', penOnly: false, straight: true, loupe: 2.5,
   color: { marker: MARKER_COLORS[0], pen: PEN_COLORS[0] }, size: { marker: 1, pen: 1 },
   sticky: { fs: 10, tc: STICKY_TC[0] } // 新しい付箋の文字サイズ・文字色（前回使ったものを引き継ぐ）
 };
@@ -547,6 +568,7 @@ const PREF_KEY = 'pdfreader:prefs';
   const p = lsGet(PREF_KEY, {}) || {};
   const pick = (k, list) => { if (list.includes(p[k])) S[k] = p[k]; };
   pick('mode', ['single', 'scroll', 'spread']); pick('dir', ['ltr', 'rtl']); pick('fit', ['page', 'width']);
+  pick('loupe', [0, 2, 2.5, 3, 4]);
   for (const k of ['coverAlone', 'penOnly', 'straight']) if (typeof p[k] === 'boolean') S[k] = p[k];
   for (const [t, list] of [['marker', MARKER_COLORS], ['pen', PEN_COLORS]]) {
     if (p.color && list.includes(p.color[t])) S.color[t] = p.color[t];
@@ -556,7 +578,7 @@ const PREF_KEY = 'pdfreader:prefs';
   if (p.sticky && STICKY_TC.includes(p.sticky.tc)) S.sticky.tc = p.sticky.tc;
 })();
 function savePrefs() {
-  lsSet(PREF_KEY, { mode: S.mode, dir: S.dir, coverAlone: S.coverAlone, fit: S.fit, penOnly: S.penOnly, straight: S.straight, color: S.color, size: S.size, sticky: S.sticky });
+  lsSet(PREF_KEY, { mode: S.mode, dir: S.dir, coverAlone: S.coverAlone, fit: S.fit, penOnly: S.penOnly, straight: S.straight, loupe: S.loupe, color: S.color, size: S.size, sticky: S.sticky });
 }
 
 // 注釈の種類：strokes（ペン・マーカー）、notes（メモ）、stickies（付箋）。いずれも { ページ番号: [項目...] }
@@ -1217,6 +1239,110 @@ viewer.addEventListener('click', e => {
   else if (full) document.body.classList.toggle('bars-hidden'); // 全画面中は中央タップでツールバーの表示切替
 });
 
+/* ================= 拡大鏡（閲覧ツールで長押し → 指の上に拡大表示、指に合わせて移動） ================= */
+const loupeEl = $('#loupe'), loupeInner = $('#loupeInner');
+const LP_DELAY = 500, LP_SLOP = 8;
+let lp = null, lpSuppressClick = false, loupeCache = { key: '', cv: null, pending: '' };
+
+viewer.addEventListener('pointerdown', e => {
+  lpSuppressClick = false;
+  if (lp) endLoupe();
+  if (!S.pdf || S.tool !== 'view' || !S.loupe || pinch) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (e.target.closest('.note, .sticky')) return;
+  const el = e.target.closest('.page'); if (!el) return;
+  lp = { pid: e.pointerId, type: e.pointerType, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, active: false };
+  lp.timer = setTimeout(() => startLoupe(el), LP_DELAY);
+});
+window.addEventListener('pointermove', e => {
+  if (!lp || e.pointerId !== lp.pid) return;
+  lp.x = e.clientX; lp.y = e.clientY;
+  if (!lp.active) { if (Math.hypot(lp.x - lp.sx, lp.y - lp.sy) > LP_SLOP) cancelLoupe(); return; }
+  e.preventDefault();
+  moveLoupe();
+}, { passive: false });
+['pointerup', 'pointercancel'].forEach(t => window.addEventListener(t, e => { if (lp && e.pointerId === lp.pid) endLoupe(); }));
+// 拡大鏡の表示中は指の動きでページがスクロールしないようにする
+viewer.addEventListener('touchmove', e => { if (lp && lp.active) e.preventDefault(); }, { passive: false });
+viewer.addEventListener('touchstart', e => { if (e.touches.length > 1 && lp) endLoupe(); }, { passive: true });
+// 長押しを離した直後のクリック（画面端のページ送り・全画面中の中央タップ）は無視する
+viewer.addEventListener('click', e => { if (lpSuppressClick) { lpSuppressClick = false; e.stopImmediatePropagation(); } }, true);
+
+function cancelLoupe() { if (lp) clearTimeout(lp.timer); lp = null; }
+function startLoupe(el) {
+  if (!lp || !el.isConnected) { lp = null; return; }
+  lp.active = true; swipe = null;
+  if (navigator.vibrate) try { navigator.vibrate(10); } catch (_) {}
+  setLoupePage(el);
+  loupeEl.classList.remove('hidden');
+  moveLoupe();
+}
+function endLoupe() {
+  if (!lp) return;
+  clearTimeout(lp.timer);
+  if (lp.active) {
+    lpSuppressClick = true; swipe = null;
+    loupeEl.classList.add('hidden');
+    loupeInner.replaceChildren();
+  }
+  lp = null;
+}
+function setLoupePage(el) {
+  lp.el = el;
+  const s = S.sizes[el._n - 1], sc = el._scale * S.loupe;
+  loupeInner.style.width = s.w * sc + 'px'; loupeInner.style.height = s.h * sc + 'px';
+  loupeInner.style.setProperty('--s', sc);
+  // まずは表示中の画像を引き伸ばして即表示し、高解像度で描き直せたら差し替える
+  const base = el.querySelector('canvas'), lo = document.createElement('canvas');
+  lo.width = base.width || 1; lo.height = base.height || 1;
+  if (base.width) lo.getContext('2d').drawImage(base, 0, 0);
+  const svg = el._svg.cloneNode(true), notes = el._notes.cloneNode(true);
+  notes.querySelectorAll('.rs-handle').forEach(h => h.remove());
+  notes.querySelectorAll('.resizing').forEach(x => x.classList.remove('resizing'));
+  loupeInner.replaceChildren(lo, svg, notes);
+  renderLoupeHi(el, sc);
+}
+async function renderLoupeHi(el, sc) {
+  const key = S.key + ':' + el._n + ':' + sc.toFixed(4);
+  const show = cv => { if (lp && lp.active && lp.el === el && loupeInner.firstChild) loupeInner.replaceChild(cv, loupeInner.firstChild); };
+  if (loupeCache.key === key) { show(loupeCache.cv); return; }
+  if (loupeCache.pending === key) return;
+  loupeCache.pending = key;
+  try {
+    const pdf = S.pdf, page = await pdf.getPage(el._n), s = S.sizes[el._n - 1];
+    const ratio = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(MAX_PIXELS / (s.w * sc * s.h * sc)));
+    const vp = page.getViewport({ scale: sc * ratio });
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.floor(vp.width)); cv.height = Math.max(1, Math.floor(vp.height));
+    const ctx = cv.getContext('2d', { alpha: false });
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    if (S.pdf !== pdf) return;
+    if (loupeCache.cv && loupeCache.cv !== cv) { loupeCache.cv.width = loupeCache.cv.height = 0; }
+    loupeCache = { key, cv, pending: '' };
+    show(cv);
+  } catch (e) { console.warn(e); }
+  finally { if (loupeCache.pending === key) loupeCache.pending = ''; }
+}
+function moveLoupe() {
+  let el = lp.el, r = el.getBoundingClientRect();
+  // 指が別のページ（見開き・スクロール表示）に移ったら、そのページを表示する
+  if (lp.x < r.left || lp.x > r.right || lp.y < r.top || lp.y > r.bottom) {
+    for (const p of pageEls.values()) {
+      const q = p.getBoundingClientRect();
+      if (p !== el && lp.x >= q.left && lp.x <= q.right && lp.y >= q.top && lp.y <= q.bottom) { setLoupePage(p); el = p; r = q; break; }
+    }
+  }
+  const D = loupeEl.offsetWidth, M = S.loupe;
+  loupeInner.style.transform = `translate(${D / 2 - (lp.x - r.left) * M}px, ${D / 2 - (lp.y - r.top) * M}px)`;
+  // 指で隠れないよう指の上に出す（上端に近いときは下に出す）
+  const gap = lp.type === 'mouse' ? 24 : 48;
+  let top = lp.y - gap - D;
+  if (top < 8) top = lp.y + gap;
+  loupeEl.style.left = clamp(lp.x - D / 2, 8, window.innerWidth - D - 8) + 'px';
+  loupeEl.style.top = Math.min(top, window.innerHeight - D - 8) + 'px';
+}
+
 /* ================= キーボード ================= */
 document.addEventListener('keydown', e => {
   const tag = (e.target.tagName || '').toLowerCase();
@@ -1350,7 +1476,7 @@ function updateOpts() {
     st.classList.toggle('on', S.straight);
   } else {
     const msg = {
-      view: S.mode === 'scroll' ? 'スクロールで閲覧・ピンチで拡大' : (isTouch ? '左右スワイプ／画面端タップでページ送り' : '←→キー・ホイール・画面端クリックでページ送り'),
+      view: (S.mode === 'scroll' ? 'スクロールで閲覧・ピンチで拡大' : (isTouch ? '左右スワイプ／画面端タップでページ送り' : '←→キー・ホイール・画面端クリックでページ送り')) + (S.loupe ? '・長押しで拡大鏡' : ''),
       eraser: 'なぞった書き込みを消します（ボタン長押しでこのページの注釈をすべて削除）',
       memo: 'ページをタップしてメモを追加（メモはドラッグで移動）',
       sticky: 'ページをタップして付箋を追加（ドラッグで移動・リンクはタップで開く）'
@@ -1853,7 +1979,12 @@ function updateViewPop() {
   $('#coverWrap').classList.toggle('dim', S.mode !== 'spread');
   $('#chkPenOnly').checked = S.penOnly;
   document.body.classList.toggle('pen-only', S.penOnly);
+  $$('#segLoupe button').forEach(b => b.classList.toggle('on', +b.dataset.v === S.loupe));
 }
+$('#segLoupe').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.loupe = +b.dataset.v; savePrefs(); updateViewPop(); updateOpts();
+});
 $('#segMode').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.dataset.v === S.mode) return;
   S.mode = b.dataset.v; S.zoom = 1; savePrefs();
