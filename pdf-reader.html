@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-GAecrqRrfmOMTya6A5F+IfzZ0LKfImE3tlGBvJ4Llu8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-DBfNVCbV8yu9zq9hYoIIg5KlWuc7sG3BdRk+VpHCNx4=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 
 <title>PDFリーダー</title>
 <style>
@@ -1399,11 +1399,13 @@ function moveLoupe() {
   }
   const D = loupeEl.offsetWidth, M = S.loupe;
   loupeInner.style.transform = `translate(${D / 2 - (lp.x - r.left) * M}px, ${D / 2 - (lp.y - r.top) * M}px)`;
-  // 指で隠れないよう指の上に出す（上端に近いときは下に出す）
-  const gap = lp.type === 'mouse' ? 24 : 48;
+  // 指や手で隠れないよう、指の左上に少しずらして出す（上端に近いときは下側、左端に近いときは右側にずらす）
+  const gap = lp.type === 'mouse' ? 24 : 48, shift = D * 0.45;
   let top = lp.y - gap - D;
   if (top < 8) top = lp.y + gap;
-  loupeEl.style.left = clamp(lp.x - D / 2, 8, window.innerWidth - D - 8) + 'px';
+  let left = lp.x - D / 2 - shift;
+  if (left < 8) left = lp.x - D / 2 + shift;
+  loupeEl.style.left = clamp(left, 8, window.innerWidth - D - 8) + 'px';
   loupeEl.style.top = Math.min(top, window.innerHeight - D - 8) + 'px';
 }
 
