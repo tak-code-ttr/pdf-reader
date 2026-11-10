@@ -1,5 +1,5 @@
 // オフライン用 Service Worker。CACHE の値は build.py がビルドごとに書き換える（変わると新しい版に更新される）
-const CACHE = 'pdf-reader-556294aab2f0';
+const CACHE = 'pdf-reader-6a2f9d8078b4';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

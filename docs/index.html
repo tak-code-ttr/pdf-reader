@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-TBex4MQw4m5Y5U8Q5URjpGXtuGGgtg/RvDIJ2x9HVjQ=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/qvfMJdw7SS7oxpUZ4Ns3Iz2OccFryfVK1hbBBu4Uns=' 'sha256-D5pcrQeUHwgmWGyU4InYm5GMRuXBfPLVo8b2ZuO8aU8=' 'sha256-GAecrqRrfmOMTya6A5F+IfzZ0LKfImE3tlGBvJ4Llu8=' 'sha256-Ll9MJFCPrDsVNMLHZir6L/WoWq0NC1WSDO5pF/7UwtU=' 'sha256-W1eZ5vjGgGYyB6xbQu4U7tKkBvp69I9QwVTwwLFWaUY=' blob:; worker-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src data: blob:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -26,7 +26,8 @@
 }
 @media (max-width:600px){ :root{ --pad:6px; } }
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;overflow:hidden}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{
   position:fixed;inset:0;display:flex;flex-direction:column;
   background:var(--bg);color:var(--fg);
@@ -2431,6 +2432,39 @@ $('#miClear').addEventListener('click', () => {
   toast('注釈をすべて削除しました');
 });
 $('#miFull').addEventListener('click', () => { closePops(); setFull(!full); });
+
+/* ================= 画面の向き変更（iPhone・iPad）後のずれ対策 ================= */
+// iOS Safari では回転やキーボードを閉じた後に、画面が拡大されたまま・少しスクロールしたままになり、
+// ボタンの見た目と実際に押せる位置がずれる（スワイプのページ送りしか効かなくなる）ことがある。
+function resetViewport() {
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  document.documentElement.scrollTop = document.body.scrollTop = 0;
+  const vv = window.visualViewport;
+  if (vv && Math.abs(vv.scale - 1) > 0.01) {
+    // viewport の設定を一度変えて戻すと、残ってしまった拡大率がリセットされる
+    const m = document.querySelector('meta[name="viewport"]'), c = m.getAttribute('content');
+    m.setAttribute('content', c.replace(/maximum-scale=[\d.]+/, 'maximum-scale=1.01'));
+    setTimeout(() => m.setAttribute('content', c), 60);
+  }
+}
+function afterRotate() {
+  // 回転の途中で終わらなかった操作（ピンチ・ドラッグ・拡大鏡など）を片付ける
+  endLoupe();
+  if (pinch) { pinch = null; pagesEl.style.transform = ''; }
+  swipe = null; noteDrag = null; sizeDrag = null; memoTap = null;
+  if (drawing) cancelDrawing();
+  resetViewport();
+  updateLayout();
+}
+let rotT;
+const onRotate = () => { clearTimeout(rotT); rotT = setTimeout(afterRotate, 350); };
+window.addEventListener('orientationchange', onRotate);
+if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', onRotate);
+// キーボードを閉じた後（ページ番号・メモ入力など）にも位置のずれを戻す
+document.addEventListener('focusout', () => setTimeout(() => {
+  const a = document.activeElement;
+  if (!a || a === document.body || !/^(input|textarea)$/i.test(a.tagName)) resetViewport();
+}, 150));
 
 /* ================= 初期化 ================= */
 // Web公開版（https）のみ Service Worker を登録してオフライン起動できるようにする
